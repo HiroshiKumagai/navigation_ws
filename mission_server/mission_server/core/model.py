@@ -105,6 +105,7 @@ class Task:
     status: TaskStatus = TaskStatus.RUNNING
     history: list[TaskEvent] = field(default_factory=list)
     finished_at: float | None = None
+    route_id: str = ""  # ルートで指示した場合（point_ids は開始時点のルートの内容）
 
     @property
     def remaining_point_ids(self):

@@ -138,8 +138,10 @@ class LocomotionCore:
     # API からの指示
     # ================================================================
 
-    def start_task(self, role: Role, request_id: str, point_ids: list[str], expected_map_id: str = "") -> Task:
-        """移動指示。point_ids が 1 件なら単発移動、複数なら巡回"""
+    def start_task(
+        self, role: Role, request_id: str, point_ids: list[str], expected_map_id: str = "", route_id: str = ""
+    ) -> Task:
+        """移動指示。point_ids が 1 件なら単発移動、複数なら巡回。ルートで指示した場合は route_id を記録する"""
         with self._lock:
             # 冪等化: 同じ要求 ID の再送には既存のタスクを返す
             if request_id and request_id in self._task_by_request:
@@ -167,6 +169,7 @@ class LocomotionCore:
                 map_id=self.active_map_id,
                 point_ids=list(point_ids),
                 created_at=now,
+                route_id=route_id,
             )
             self.tasks[task.task_id] = task
             if request_id:

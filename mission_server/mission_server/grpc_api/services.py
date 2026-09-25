@@ -19,7 +19,7 @@ from locomotion.v1 import locomotion_pb2_grpc as pb_grpc
 
 from ..core import model
 from ..core.model import NotFound, PermissionDenied, PreconditionFailed, Rejected, Role
-from ..store import Point
+from ..store import Point, Route
 from . import convert
 
 ROLE_METADATA_KEY = "x-locomotion-role"
@@ -189,8 +189,23 @@ class TaskService(pb_grpc.TaskServiceServicer):
 
     def StartTask(self, request, context):
         role = role_of(context)
+        point_ids = list(request.point_ids)
+        if bool(point_ids) == bool(request.route_id):
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "point_ids と route_id のどちらか一方を指定してください")
+        if request.route_id:
+            # 開始時点のルートの内容をタスクに記録する（仕様書 6 章「ルートのルール」）
+            map_id = self.ctx.core.active_map_id
+            if not map_id or not self.ctx.store.route_exists(map_id, request.route_id):
+                context.abort(grpc.StatusCode.NOT_FOUND, f"ルート {request.route_id} は地図 {map_id} にありません")
+            point_ids = list(self.ctx.store.get_route(map_id, request.route_id).point_ids)
         task = call_core(
-            context, self.ctx.core.start_task, role, request.request_id, list(request.point_ids), request.expected_map_id
+            context,
+            self.ctx.core.start_task,
+            role,
+            request.request_id,
+            point_ids,
+            request.expected_map_id,
+            route_id=request.route_id,
         )
         return pb.StartTaskResponse(task=self._task_pb(task))
 
@@ -255,7 +270,7 @@ class MapService(pb_grpc.MapServiceServicer):
 
 
 class PointService(pb_grpc.PointServiceServicer):
-    """最小限: 地点の一覧・参照・登録（更新・削除・再確認はステップ 4）"""
+    """地点（最小限: 一覧・参照・登録。更新・削除・再確認はセットアップ機能のステップ）とルート"""
 
     def __init__(self, ctx: ServerContext):
         self.ctx = ctx
@@ -308,6 +323,65 @@ class PointService(pb_grpc.PointServiceServicer):
         )
         self.ctx.store.put_point(point)
         return convert.point_to_pb(point)
+
+
+    # ---- ルート ----
+    def _require_integrator(self, context):
+        if role_of(context) != Role.INTEGRATOR:
+            context.abort(grpc.StatusCode.PERMISSION_DENIED, "ルートの登録・編集は導入担当者のみです")
+
+    def _require_route(self, context, map_id, route_id, expected_version=None):
+        self._require_map(context, map_id)
+        if not self.ctx.store.route_exists(map_id, route_id):
+            context.abort(grpc.StatusCode.NOT_FOUND, f"ルート {route_id} はありません")
+        route = self.ctx.store.get_route(map_id, route_id)
+        if expected_version is not None and expected_version != route.version:
+            context.abort(grpc.StatusCode.ABORTED, f"ルート {route_id} は版 {route.version} に更新されています")
+        return route
+
+    def _validate_route_points(self, context, map_id, point_ids):
+        if not point_ids:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "地点を 1 つ以上指定してください")
+        missing = [p for p in point_ids if not self.ctx.store.point_exists(map_id, p)]
+        if missing:
+            context.abort(grpc.StatusCode.NOT_FOUND, f"地点 {', '.join(missing)} は地図 {map_id} にありません")
+
+    def ListRoutes(self, request, context):
+        role_of(context)
+        self._require_map(context, request.map_id)
+        return pb.ListRoutesResponse(routes=[convert.route_to_pb(r) for r in self.ctx.store.list_routes(request.map_id)])
+
+    def GetRoute(self, request, context):
+        role_of(context)
+        return convert.route_to_pb(self._require_route(context, request.map_id, request.route_id))
+
+    def CreateRoute(self, request, context):
+        self._require_integrator(context)
+        self._require_map(context, request.map_id)
+        if not request.route_id:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "route_id を指定してください")
+        if self.ctx.store.route_exists(request.map_id, request.route_id):
+            context.abort(grpc.StatusCode.ALREADY_EXISTS, f"ルート {request.route_id} は既にあります")
+        self._validate_route_points(context, request.map_id, list(request.point_ids))
+        route = Route(request.map_id, request.route_id, request.name or request.route_id, list(request.point_ids))
+        self.ctx.store.put_route(route)
+        return convert.route_to_pb(route)
+
+    def UpdateRoute(self, request, context):
+        self._require_integrator(context)
+        route = self._require_route(context, request.map_id, request.route_id, request.expected_version)
+        self._validate_route_points(context, request.map_id, list(request.point_ids))
+        updated = Route(
+            request.map_id, request.route_id, request.name or route.name, list(request.point_ids), route.version + 1
+        )
+        self.ctx.store.put_route(updated)
+        return convert.route_to_pb(updated)
+
+    def DeleteRoute(self, request, context):
+        self._require_integrator(context)
+        self._require_route(context, request.map_id, request.route_id, request.expected_version)
+        self.ctx.store.delete_route(request.map_id, request.route_id)
+        return pb.DeleteRouteResponse()
 
 
 def add_services(server, ctx: ServerContext):

@@ -4,7 +4,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from locomotion.v1 import locomotion_pb2 as pb
 
 from ..core import model
-from ..store import Point
+from ..store import Point, Route
 
 
 def timestamp(seconds: float | None) -> Timestamp | None:
@@ -78,6 +78,7 @@ def task_to_pb(task: model.Task, map_version: int = 0, with_history: bool = True
         status=enum_to_pb(task.status),
         created_at=timestamp(task.created_at),
         finished_at=timestamp(task.finished_at),
+        route_id=task.route_id,
     )
     if with_history:
         for event in task.history:
@@ -132,3 +133,9 @@ def point_to_pb(point: Point) -> pb.Point:
 def point_kind_from_pb(kind: int) -> str:
     name = pb.PointKind.Name(kind)
     return "WORK" if name == "POINT_KIND_UNSPECIFIED" else name.removeprefix("POINT_KIND_")
+
+
+def route_to_pb(route: Route) -> pb.Route:
+    return pb.Route(
+        map_id=route.map_id, route_id=route.route_id, name=route.name, point_ids=route.point_ids, version=route.version
+    )

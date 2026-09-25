@@ -4,6 +4,7 @@
     <data_dir>/maps/<map_id>/map.yaml        地図本体（map_server 形式。画像は同じディレクトリ）
     <data_dir>/maps/<map_id>/meta.yaml       名称・版番号
     <data_dir>/maps/<map_id>/points.yaml     目標地点
+    <data_dir>/maps/<map_id>/routes.yaml     ルート（地点 ID の並び）
 """
 
 import math
@@ -65,12 +66,38 @@ class Point:
 
 
 @dataclass
+class Route:
+    map_id: str
+    route_id: str
+    name: str
+    point_ids: list[str]
+    version: int = 1
+
+    def to_yaml(self):
+        data = {"route_id": self.route_id, "name": self.name, "point_ids": list(self.point_ids)}
+        if self.version != 1:
+            data["version"] = self.version
+        return data
+
+    @classmethod
+    def from_yaml(cls, map_id, data):
+        return cls(
+            map_id=map_id,
+            route_id=str(data["route_id"]),
+            name=data.get("name", ""),
+            point_ids=[str(p) for p in data.get("point_ids", [])],
+            version=int(data.get("version", 1)),
+        )
+
+
+@dataclass
 class MapInfo:
     map_id: str
     name: str
     version: int
     yaml_path: Path
     points: dict[str, Point] = field(default_factory=dict)
+    routes: dict[str, Route] = field(default_factory=dict)
 
 
 class Store:
@@ -97,6 +124,9 @@ class Store:
                 for data in self._read_yaml(map_dir / "points.yaml", []) or []:
                     point = Point.from_yaml(info.map_id, data)
                     info.points[point.point_id] = point
+                for data in self._read_yaml(map_dir / "routes.yaml", []) or []:
+                    route = Route.from_yaml(info.map_id, data)
+                    info.routes[route.route_id] = route
                 self._maps[info.map_id] = info
 
     # ---- 地図 ----
@@ -135,6 +165,34 @@ class Store:
             del self._maps[map_id].points[point_id]
             self._save_points(map_id)
 
+    def routes_using_point(self, map_id, point_id) -> list[str]:
+        """その地点を含むルートの ID（地点の削除可否の判定用）"""
+        with self._lock:
+            return [r.route_id for r in self._maps[map_id].routes.values() if point_id in r.point_ids]
+
+    # ---- ルート ----
+    def route_exists(self, map_id, route_id):
+        with self._lock:
+            return map_id in self._maps and route_id in self._maps[map_id].routes
+
+    def get_route(self, map_id, route_id) -> Route:
+        with self._lock:
+            return self._maps[map_id].routes[route_id]
+
+    def list_routes(self, map_id) -> list[Route]:
+        with self._lock:
+            return list(self._maps[map_id].routes.values())
+
+    def put_route(self, route: Route):
+        with self._lock:
+            self._maps[route.map_id].routes[route.route_id] = route
+            self._save_routes(route.map_id)
+
+    def delete_route(self, map_id, route_id):
+        with self._lock:
+            del self._maps[map_id].routes[route_id]
+            self._save_routes(map_id)
+
     # ---- ロボット設定 ----
     @property
     def active_map_id(self):
@@ -149,6 +207,10 @@ class Store:
     def _save_points(self, map_id):
         info = self._maps[map_id]
         self._write_yaml(info.yaml_path.parent / "points.yaml", [p.to_yaml() for p in info.points.values()])
+
+    def _save_routes(self, map_id):
+        info = self._maps[map_id]
+        self._write_yaml(info.yaml_path.parent / "routes.yaml", [r.to_yaml() for r in info.routes.values()])
 
     @staticmethod
     def _read_yaml(path, default):

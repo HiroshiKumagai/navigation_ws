@@ -1,0 +1,7 @@
+# ルート（仕様書 6 章）。よく使う巡回に名前を付けたもの
+- route_id: north
+  name: 北側の巡回
+  point_ids: [A, B, home]
+- route_id: south
+  name: 南側の巡回
+  point_ids: [C, D, home]

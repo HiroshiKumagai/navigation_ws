@@ -196,7 +196,7 @@ message ResetSafetyStopResponse {}
 // ============================================================
 
 service TaskService {
-  // 移動指示。point_ids が1件なら単発移動、複数なら巡回。
+  // 移動指示。point_ids が1件なら単発移動、複数なら巡回。point_ids の代わりに route_id でも指定できる。
   // 待機中のみ受理。役割：上位指示モードなら上位システム、UI指示モードならオペレータ
   rpc StartTask(StartTaskRequest) returns (StartTaskResponse);
 
@@ -255,14 +255,17 @@ message Task {
   repeated TaskEvent history = 9;  // 状態の履歴（GetTask でのみ全件）
   google.protobuf.Timestamp created_at = 10;
   google.protobuf.Timestamp finished_at = 11;
+  string route_id = 12;            // ルートで指示した場合（point_ids は開始時点のルートの内容）
 }
 
 message StartTaskRequest {
   // 冪等化キー。同じ request_id の再送には既存タスクを返し、二重登録しない
   string request_id = 1;
+  // point_ids と route_id のどちらか一方を指定する（両方・どちらもなしは INVALID_ARGUMENT）
   repeated string point_ids = 2;
   // 指定時、使用中地図と異なれば拒否する（意図しない地図での実行を防ぐ）
   string expected_map_id = 3;
+  string route_id = 4;  // 使用中の地図のルート
 }
 message StartTaskResponse {
   Task task = 1;
@@ -440,7 +443,7 @@ message ActivateMapRequest {
 message ActivateMapResponse {}
 
 // ============================================================
-// PointService：目標地点
+// PointService：目標地点とルート
 // ============================================================
 
 service PointService {
@@ -454,6 +457,13 @@ service PointService {
   rpc DeletePoint(DeletePointRequest) returns (DeletePointResponse);
   // 再スキャン後の再確認を完了にする（必要なら姿勢も更新）
   rpc MarkPointVerified(MarkPointVerifiedRequest) returns (Point);
+
+  // ルート（地点 ID の並びに名前を付けたもの）。参照は全員、登録・編集は導入担当者
+  rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
+  rpc GetRoute(GetRouteRequest) returns (Route);
+  rpc CreateRoute(CreateRouteRequest) returns (Route);
+  rpc UpdateRoute(UpdateRouteRequest) returns (Route);
+  rpc DeleteRoute(DeleteRouteRequest) returns (DeleteRouteResponse);
 }
 
 enum PointKind {
@@ -512,6 +522,7 @@ message UpdatePointRequest {
   Point point = 4;  // 更新後の内容（map_id / point_id / version は無視）
 }
 
+// ルートから参照されている地点は削除できない（FAILED_PRECONDITION。reason に参照しているルート ID）
 message DeletePointRequest {
   string map_id = 1;
   string point_id = 2;
@@ -529,6 +540,48 @@ message MarkPointVerifiedRequest {
     bool use_current_pose = 6;
   }
 }
+
+message Route {
+  string map_id = 1;
+  string route_id = 2;              // 地図内で一意。利用者が付ける
+  string name = 3;
+  repeated string point_ids = 4;    // 巡回する地点の並び（同じ地図の地点）
+  uint64 version = 5;
+}
+
+message ListRoutesRequest {
+  string map_id = 1;
+}
+message ListRoutesResponse {
+  repeated Route routes = 1;
+}
+
+message GetRouteRequest {
+  string map_id = 1;
+  string route_id = 2;
+}
+
+message CreateRouteRequest {
+  string map_id = 1;
+  string route_id = 2;
+  string name = 3;
+  repeated string point_ids = 4;  // 存在しない地点を含む場合は NOT_FOUND
+}
+
+message UpdateRouteRequest {
+  string map_id = 1;
+  string route_id = 2;
+  uint64 expected_version = 3;
+  string name = 4;
+  repeated string point_ids = 5;
+}
+
+message DeleteRouteRequest {
+  string map_id = 1;
+  string route_id = 2;
+  uint64 expected_version = 3;
+}
+message DeleteRouteResponse {}
 
 // ============================================================
 // ConfigService：設定

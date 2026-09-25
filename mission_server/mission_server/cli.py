@@ -6,11 +6,13 @@
     watch                       状態の変化を表示し続ける（Ctrl+C で終了）
     pose                        位置・速度を表示し続ける
     points [--map ID]           地点の一覧
+    routes [--map ID]           ルートの一覧
     tasks                       実行記録の一覧
     task TASK_ID                実行記録の詳細（状態の履歴つき）
     init-pose POINT_ID | --pose X Y YAW_DEG      初期位置の設定
     mode upper|operator|joystick                  モード切替
     go POINT_ID [POINT_ID ...] [--request-id ID]   移動指示（複数なら巡回）
+    go --route ROUTE_ID                           ルートで移動指示
     pause | resume | stop | retry [TASK_ID]       保持中のタスクへの操作（省略時は保持中のタスク）
     reset-safety                非常停止のリセット
     add-point POINT_ID [--pose X Y YAW_DEG] [--name NAME]   地点の登録（--pose 省略時は現在位置。導入担当者）
@@ -51,9 +53,10 @@ def format_status(s):
 
 
 def format_task(t, history=False):
+    route = f"route={t.route_id} " if t.route_id else ""
     line = (
         f"{t.task_id}  {enum_name(pb.TaskStatus, t.status, 'TASK_STATUS_'):9s}  "
-        f"{enum_name(pb.TaskSource, t.source, 'TASK_SOURCE_'):8s}  {list(t.point_ids)}  {t.current_index}/{len(t.point_ids)}"
+        f"{enum_name(pb.TaskSource, t.source, 'TASK_SOURCE_'):8s}  {route}{list(t.point_ids)}  {t.current_index}/{len(t.point_ids)}"
     )
     if history:
         for e in t.history:
@@ -79,6 +82,8 @@ def main():
     sub.add_parser("pose")
     p = sub.add_parser("points")
     p.add_argument("--map", default="")
+    p = sub.add_parser("routes")
+    p.add_argument("--map", default="")
     sub.add_parser("tasks")
     p = sub.add_parser("task")
     p.add_argument("task_id")
@@ -88,7 +93,8 @@ def main():
     p = sub.add_parser("mode")
     p.add_argument("mode", choices=["upper", "operator", "joystick"])
     p = sub.add_parser("go")
-    p.add_argument("point_ids", nargs="+")
+    p.add_argument("point_ids", nargs="*")
+    p.add_argument("--route", default="")
     p.add_argument("--request-id", default="")
     for name in ("pause", "resume", "stop", "retry"):
         p = sub.add_parser(name)
@@ -132,6 +138,10 @@ def main():
             map_id = args.map or robot.GetStatus(pb.GetStatusRequest(), metadata=md).active_map_id
             for pt in points.ListPoints(pb.ListPointsRequest(map_id=map_id), metadata=md).points:
                 print(f"{pt.point_id:10s} ({pt.pose.x:7.2f}, {pt.pose.y:7.2f}, {math.degrees(pt.pose.yaw):6.1f}°)  {pt.name}")
+        elif c == "routes":
+            map_id = args.map or robot.GetStatus(pb.GetStatusRequest(), metadata=md).active_map_id
+            for r in points.ListRoutes(pb.ListRoutesRequest(map_id=map_id), metadata=md).routes:
+                print(f"{r.route_id:10s} {' -> '.join(r.point_ids):30s} {r.name}")
         elif c == "tasks":
             for t in tasks.ListTasks(pb.ListTasksRequest(), metadata=md).tasks:
                 print(format_task(t))
@@ -151,7 +161,9 @@ def main():
             response = robot.SetMode(pb.SetModeRequest(mode=getattr(pb, f"MODE_{args.mode.upper()}")), metadata=md)
             print("->", enum_name(pb.RobotState, response.resulting_state, "ROBOT_STATE_"))
         elif c == "go":
-            request = pb.StartTaskRequest(request_id=args.request_id or uuid.uuid4().hex, point_ids=args.point_ids)
+            request = pb.StartTaskRequest(
+                request_id=args.request_id or uuid.uuid4().hex, point_ids=args.point_ids, route_id=args.route
+            )
             print(format_task(tasks.StartTask(request, metadata=md).task))
         elif c in ("pause", "resume", "stop", "retry"):
             method = {"pause": tasks.PauseTask, "resume": tasks.ResumeTask, "stop": tasks.StopTask, "retry": tasks.RetryTask}[c]

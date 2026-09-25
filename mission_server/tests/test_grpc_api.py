@@ -206,3 +206,45 @@ def test_teleop(api):
     api.robot.SetMode(pb.SetModeRequest(mode=pb.MODE_JOYSTICK), metadata=OPERATOR)
     api.robot.Teleop(pb.TeleopRequest(linear_velocity_x=0.3, angular_velocity=-0.2), metadata=OPERATOR)
     assert api.adapter.effects[-1].linear_x == pytest.approx(0.3)
+
+
+def test_start_task_by_route(api):
+    make_idle(api)
+    routes = api.points.ListRoutes(pb.ListRoutesRequest(map_id="warehouse"), metadata=OPERATOR).routes
+    north = {r.route_id: r for r in routes}["north"]
+    task = api.task.StartTask(pb.StartTaskRequest(request_id="r1", route_id="north"), metadata=OPERATOR).task
+    assert task.route_id == "north" and list(task.point_ids) == list(north.point_ids)
+
+    for request in (
+        pb.StartTaskRequest(request_id="r2"),  # どちらもなし
+        pb.StartTaskRequest(request_id="r3", point_ids=["A"], route_id="north"),  # 両方
+    ):
+        with pytest.raises(grpc.RpcError) as err:
+            api.task.StartTask(request, metadata=OPERATOR)
+        assert err.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+    with pytest.raises(grpc.RpcError) as err:
+        api.task.StartTask(pb.StartTaskRequest(request_id="r4", route_id="nowhere"), metadata=OPERATOR)
+    assert err.value.code() == grpc.StatusCode.NOT_FOUND
+
+
+def test_route_editing(api):
+    create = pb.CreateRouteRequest(map_id="warehouse", route_id="loop", name="一周", point_ids=["A", "C"])
+    with pytest.raises(grpc.RpcError) as err:
+        api.points.CreateRoute(create, metadata=OPERATOR)
+    assert err.value.code() == grpc.StatusCode.PERMISSION_DENIED
+    route = api.points.CreateRoute(create, metadata=INTEGRATOR)
+    assert route.version == 1
+
+    bad = pb.CreateRouteRequest(map_id="warehouse", route_id="bad", point_ids=["A", "NO_SUCH_POINT"])
+    with pytest.raises(grpc.RpcError) as err:
+        api.points.CreateRoute(bad, metadata=INTEGRATOR)
+    assert err.value.code() == grpc.StatusCode.NOT_FOUND
+
+    update = pb.UpdateRouteRequest(map_id="warehouse", route_id="loop", expected_version=1, point_ids=["A", "C", "home"])
+    assert api.points.UpdateRoute(update, metadata=INTEGRATOR).version == 2
+    with pytest.raises(grpc.RpcError) as err:
+        api.points.UpdateRoute(update, metadata=INTEGRATOR)  # 古い版のまま更新
+    assert err.value.code() == grpc.StatusCode.ABORTED
+    api.points.DeleteRoute(pb.DeleteRouteRequest(map_id="warehouse", route_id="loop", expected_version=2), metadata=INTEGRATOR)
+    ids = [r.route_id for r in api.points.ListRoutes(pb.ListRoutesRequest(map_id="warehouse"), metadata=OPERATOR).routes]
+    assert "loop" not in ids
