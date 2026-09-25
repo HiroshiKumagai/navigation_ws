@@ -164,6 +164,17 @@ class RobotService(pb_grpc.RobotServiceServicer):
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "pose か point_id を指定してください")
         return pb.SetInitialPoseResponse()
 
+    def Teleop(self, request, context):
+        call_core(
+            context,
+            self.ctx.core.teleop,
+            role_of(context),
+            request.linear_velocity_x,
+            request.linear_velocity_y,
+            request.angular_velocity,
+        )
+        return pb.TeleopResponse()
+
     def ResetSafetyStop(self, request, context):
         call_core(context, self.ctx.core.reset_safety_stop, role_of(context))
         return pb.ResetSafetyStopResponse()

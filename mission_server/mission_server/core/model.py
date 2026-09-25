@@ -158,6 +158,15 @@ class SetCommandMode(Effect):
 
 
 @dataclass(frozen=True)
+class TeleopCommand(Effect):
+    """操作パッドの速度指令（ロボット座標系）"""
+
+    linear_x: float
+    linear_y: float
+    angular: float
+
+
+@dataclass(frozen=True)
 class SetInitialPose(Effect):
     pose: Pose2D | None = None
     point_id: str | None = None

@@ -118,6 +118,11 @@ service RobotService {
   // 異常停止中に設定した場合、保持していたタスクは破棄する（FAILED）。役割：オペレータ以上
   rpc SetInitialPose(SetInitialPoseRequest) returns (SetInitialPoseResponse);
 
+  // 操作パッド（UI 上のゲームパッド相当）での手動操作。約 10Hz で送る（指を離したら 0 を送る）。
+  // 指令が 0.5 秒途絶えたら停止する。ジョイスティックモードで手動操作・地図作成中のみ受理。
+  // 実物のジョイスティックと同時に操作された場合はジョイスティックを優先する。役割：オペレータ以上
+  rpc Teleop(TeleopRequest) returns (TeleopResponse);
+
   // 非常停止解除後のリセット。リセット後、移動中から入った場合は一時停止へ、
   // それ以外は安全停止前の状態へ戻る。役割：オペレータ以上
   rpc ResetSafetyStop(ResetSafetyStopRequest) returns (ResetSafetyStopResponse);
@@ -174,6 +179,14 @@ message SetInitialPoseRequest {
   }
 }
 message SetInitialPoseResponse {}
+
+message TeleopRequest {
+  // ロボット座標系（base_link）の速度。サーバ側で上限に丸める
+  double linear_velocity_x = 1;  // [m/s] 前後
+  double linear_velocity_y = 2;  // [m/s] 左右
+  double angular_velocity = 3;   // [rad/s]
+}
+message TeleopResponse {}
 
 message ResetSafetyStopRequest {}
 message ResetSafetyStopResponse {}

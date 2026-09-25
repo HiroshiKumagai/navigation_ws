@@ -17,6 +17,7 @@ from mission_server.core.model import (
     RobotState as S,
     SafetyStopKind,
     TaskStatus,
+    TeleopCommand,
 )
 from mission_server.core.state_machine import ACCEPTED_STATES
 
@@ -294,3 +295,18 @@ def test_task_history_records_state_after_transition(core, rec):
         (TaskStatus.RUNNING, S.NAVIGATING),
         (TaskStatus.SUCCEEDED, S.IDLE),
     ]
+
+
+def test_teleop_only_in_joystick_manual(core, rec):
+    """操作パッドはジョイスティックモードで手動操作・地図作成中のみ（状態は変えない）"""
+    make_idle(core, rec)
+    with pytest.raises(PreconditionFailed):
+        core.teleop(OP, 0.3, 0.0, 0.0)
+    core.set_mode(OP, Mode.JOYSTICK)
+    rec.take_effects()
+    sequence = core.sequence
+    core.teleop(OP, 0.3, -0.1, 0.2)
+    assert rec.effects == [TeleopCommand(0.3, -0.1, 0.2)]
+    assert core.sequence == sequence
+    with pytest.raises(PermissionDenied):
+        core.teleop(UPPER, 0.3, 0.0, 0.0)

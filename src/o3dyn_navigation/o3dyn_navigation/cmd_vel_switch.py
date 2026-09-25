@@ -1,6 +1,8 @@
 """指令切替ノード（仕様書 2 章）。Nav2 とジョイスティックの速度指令のうち、モードに応じて一方だけを通す。
 
-- 入力: nav_cmd_vel（Nav2 の velocity_smoother 出力）, joy_cmd_vel（teleop_twist_joy 出力）
+- 入力: nav_cmd_vel（Nav2 の velocity_smoother 出力）, joy_cmd_vel（teleop_twist_joy 出力）,
+        ui_cmd_vel（UI の操作パッド。ミッションサーバの Teleop API から）
+- ジョイスティックモードでは joy_cmd_vel と ui_cmd_vel を通す。両方が来ている間は joy_cmd_vel を優先する
 - 出力: cmd_vel_out（collision_monitor の入力。手動操作にも減速・停止を効かせる）
 - モード切替: サービス ~/set_joystick_mode（std_srvs/SetBool。true=ジョイスティック, false=ナビゲーション）
   本来はミッションサーバが停止中にだけ切り替える。この段階では開発用に直接呼べるようにしている
@@ -30,11 +32,13 @@ class CmdVelSwitch(Node):
             String, "~/mode", QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         )
         self.create_subscription(Twist, "nav_cmd_vel", lambda m: self._on_cmd(NAVIGATION, m), 10)
-        self.create_subscription(Twist, "joy_cmd_vel", lambda m: self._on_cmd(JOYSTICK, m), 10)
+        self.create_subscription(Twist, "joy_cmd_vel", self._on_joy, 10)
+        self.create_subscription(Twist, "ui_cmd_vel", self._on_ui, 10)
         self.create_service(SetBool, "~/set_joystick_mode", self._on_set_mode)
         self.create_timer(0.05, self._check_timeout)
 
         self.last_cmd_time = None
+        self.last_joy_time = None
         self._publish_mode()
 
     def _on_cmd(self, source, msg):
@@ -42,6 +46,17 @@ class CmdVelSwitch(Node):
             return
         self.last_cmd_time = self.get_clock().now()
         self.publisher.publish(msg)
+
+    def _on_joy(self, msg):
+        self.last_joy_time = self.get_clock().now()
+        self._on_cmd(JOYSTICK, msg)
+
+    def _on_ui(self, msg):
+        # 実物のジョイスティックが操作中（timeout 以内に指令あり）なら操作パッドは無視する
+        if self.last_joy_time is not None:
+            if (self.get_clock().now() - self.last_joy_time).nanoseconds <= self.timeout * 1e9:
+                return
+        self._on_cmd(JOYSTICK, msg)
 
     def _check_timeout(self):
         if self.last_cmd_time is None:

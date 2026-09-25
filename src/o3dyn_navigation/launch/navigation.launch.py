@@ -55,6 +55,7 @@ def generate_launch_description():
                 remappings=[
                     ("nav_cmd_vel", "cmd_vel_smoothed"),
                     ("joy_cmd_vel", "cmd_vel_joy"),
+                    ("ui_cmd_vel", "cmd_vel_ui"),
                     ("cmd_vel_out", "cmd_vel_switched"),
                 ],
                 output="screen",

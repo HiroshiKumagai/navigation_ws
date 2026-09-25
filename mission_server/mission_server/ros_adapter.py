@@ -5,6 +5,7 @@
     CancelNavigation -> Nav2 のキャンセル      /amcl_pose の共分散 -> on_localization
     SetCommandMode -> 指令切替ノード            /safety/state -> on_safety_signal
     SetInitialPose -> /initialpose
+    TeleopCommand -> /cmd_vel_ui（指令切替ノードの手動操作の入力）
     ResetSafetyStop -> /safety/reset
     ActivateMap -> map_server の load_map
 
@@ -19,7 +20,7 @@ from functools import partial
 
 import rclpy
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav2_msgs.action import NavigateThroughPoses, NavigateToPose
 from nav2_msgs.srv import LoadMap
 from nav_msgs.msg import Odometry
@@ -45,6 +46,7 @@ from .core.model import (
     SetCommandMode,
     SetInitialPose,
     StartMapping,
+    TeleopCommand,
 )
 
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -57,6 +59,10 @@ LOCALIZATION_THRESHOLDS = {
     "STANDARD": (0.25, 0.15, 0.50, 0.35),
     "LOOSE": (0.40, 0.25, 0.80, 0.50),
 }
+
+# 操作パッドの速度の上限（ゲームパッドの高速と同じ）
+TELEOP_MAX_LINEAR = 0.5  # [m/s]
+TELEOP_MAX_ANGULAR = 0.8  # [rad/s]
 
 # 回避動作中 -> 通常に戻す条件: リカバリ後に残り距離がこれだけ減った
 RECOVERY_CLEAR_DISTANCE = 0.3  # [m]
@@ -129,6 +135,7 @@ class RosAdapter:
         self._load_map = n.create_client(LoadMap, "/map_server/load_map")
         self._initial_pose_pub = n.create_publisher(PoseWithCovarianceStamped, "/initialpose", 10)
         self._safety_reset_pub = n.create_publisher(Empty, "/safety/reset", 10)
+        self._teleop_pub = n.create_publisher(Twist, "/cmd_vel_ui", 10)
         n.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self._on_amcl_pose, LATCHED)
         n.create_subscription(UInt8, "/safety/state", self._on_safety_state, LATCHED)
         n.create_subscription(Odometry, "/odom", self._on_odom, 10)
@@ -186,6 +193,8 @@ class RosAdapter:
         elif isinstance(effect, SetInitialPose):
             pose = effect.pose or self.store.get_point(self.core.active_map_id, effect.point_id).pose
             self._publish_initial_pose(pose)
+        elif isinstance(effect, TeleopCommand):
+            self._publish_teleop(effect)
         elif isinstance(effect, ResetSafetyStop):
             self._safety_reset_pub.publish(Empty())
         elif isinstance(effect, ActivateMap):
@@ -336,6 +345,14 @@ class RosAdapter:
         msg.pose.covariance[0] = msg.pose.covariance[7] = 0.2**2
         msg.pose.covariance[35] = 0.1**2
         self._initial_pose_pub.publish(msg)
+
+    def _publish_teleop(self, effect):
+        msg = Twist()
+        speed = math.hypot(effect.linear_x, effect.linear_y)
+        scale = min(1.0, TELEOP_MAX_LINEAR / speed) if speed > 0 else 1.0
+        msg.linear.x, msg.linear.y = effect.linear_x * scale, effect.linear_y * scale
+        msg.angular.z = max(-TELEOP_MAX_ANGULAR, min(TELEOP_MAX_ANGULAR, effect.angular))
+        self._teleop_pub.publish(msg)
 
     def _now(self):
         return self.node.get_clock().now().nanoseconds * 1e-9

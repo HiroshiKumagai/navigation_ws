@@ -196,3 +196,13 @@ def test_maps(api):
     assert [m.map_id for m in maps] == ["warehouse"]
     api.maps.ActivateMap(pb.ActivateMapRequest(map_id="warehouse"), metadata=OPERATOR)
     assert api.robot.GetStatus(pb.GetStatusRequest(), metadata=OPERATOR).state == pb.ROBOT_STATE_NOT_READY
+
+
+def test_teleop(api):
+    make_idle(api)
+    with pytest.raises(grpc.RpcError) as err:
+        api.robot.Teleop(pb.TeleopRequest(linear_velocity_x=0.3), metadata=OPERATOR)
+    assert err.value.code() == grpc.StatusCode.FAILED_PRECONDITION
+    api.robot.SetMode(pb.SetModeRequest(mode=pb.MODE_JOYSTICK), metadata=OPERATOR)
+    api.robot.Teleop(pb.TeleopRequest(linear_velocity_x=0.3, angular_velocity=-0.2), metadata=OPERATOR)
+    assert api.adapter.effects[-1].linear_x == pytest.approx(0.3)

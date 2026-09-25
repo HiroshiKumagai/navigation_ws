@@ -37,6 +37,7 @@ from .model import (
     SetInitialPose,
     StartMapping,
     Task,
+    TeleopCommand,
     TaskEvent,
     TaskSource,
     TaskStatus,
@@ -272,6 +273,14 @@ class LocomotionCore:
                 self._set_state(S.IDLE)
             self._commit()
             return self.state
+
+    def teleop(self, role: Role, linear_x: float, linear_y: float, angular: float) -> None:
+        """操作パッドの速度指令。ジョイスティックモードで手動操作・地図作成中のみ受理（状態は変えない）"""
+        with self._lock:
+            self._require_role(role, OPERATOR_ROLES)
+            if not self.joystick_accepting:
+                raise PreconditionFailed("手動操作はジョイスティックモードのときだけできます", self.state, self.mode)
+            self._emit(TeleopCommand(linear_x, linear_y, angular))
 
     def reset_safety_stop(self, role: Role) -> None:
         """非常停止のリセットを安全系に要求する。状態は安全系の信号が解除されてから変わる"""
