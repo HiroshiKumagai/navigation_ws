@@ -247,17 +247,17 @@ def test_status_sequence_increases_on_every_change(core, rec):
     assert sequences == sorted(sequences) and len(set(sequences)) == len(sequences)
 
 
-# ---- 仕様書に明記がなく、実装で決めた挙動（仕様書への反映を検討） ----
+# ---- 実装で見つかり、仕様書に反映した挙動（Sep 25 改訂）と未決事項 ----
 
 
-def test_gap_localization_lost_while_idle_goes_not_ready(core, rec):
+def test_localization_lost_while_idle_goes_not_ready(core, rec):
     """待機中の自己位置喪失は準備未完了へ（初期位置の再設定ができるように）"""
     make_idle(core, rec)
     core.on_localization(False)
     assert core.state == S.NOT_READY
 
 
-def test_gap_stop_from_fault_with_lost_localization_goes_not_ready(core, rec):
+def test_stop_from_fault_with_lost_localization_goes_not_ready(core, rec):
     """自己位置喪失の異常停止から停止指示で抜けた場合は準備未完了へ"""
     task = make_navigating(core, rec)
     core.on_localization(False)
@@ -265,7 +265,7 @@ def test_gap_stop_from_fault_with_lost_localization_goes_not_ready(core, rec):
     assert core.state == S.NOT_READY
 
 
-def test_gap_switch_between_navigation_modes_in_fault(core, rec):
+def test_switch_between_navigation_modes_in_fault(core, rec):
     """異常停止中に上位指示 <-> UI 指示へ切り替えると、タスクを破棄（失敗）して待機へ"""
     task = make_navigating(core, rec)
     core.on_navigation_failed(1, BLOCKED)
@@ -273,7 +273,7 @@ def test_gap_switch_between_navigation_modes_in_fault(core, rec):
     assert task.status == TaskStatus.FAILED
 
 
-def test_gap_stop_rejected_during_safety_stop(core, rec):
+def test_undecided_stop_rejected_during_safety_stop(core, rec):
     """安全停止中の停止指示（タスクの破棄）は、仕様書 10 章の未決事項が決まるまで受け付けない"""
     task = make_navigating(core, rec)
     core.on_safety_signal(1)

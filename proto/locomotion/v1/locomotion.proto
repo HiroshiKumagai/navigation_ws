@@ -114,7 +114,7 @@ service RobotService {
   // 異常停止中に切り替えた場合、保持していたタスクは破棄する（FAILED）。役割：オペレータ以上
   rpc SetMode(SetModeRequest) returns (SetModeResponse);
 
-  // 初期位置の設定。準備未完了・異常停止（自己位置喪失）中に受理。
+  // 初期位置の設定。準備未完了・異常停止中に受理（異常の分類は問わない）。
   // 異常停止中に設定した場合、保持していたタスクは破棄する（FAILED）。役割：オペレータ以上
   rpc SetInitialPose(SetInitialPoseRequest) returns (SetInitialPoseResponse);
 
