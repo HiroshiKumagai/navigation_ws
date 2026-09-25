@@ -2,13 +2,14 @@
 # シミュレーション環境（Isaac Sim + Nav2 + ゲームパッド）を一括で起動する。
 # Ctrl+C で Nav2 と Isaac Sim の両方を終了する。
 #
-# 使い方: ./start_sim.sh [--headless] [--no-nav] [--no-rviz] [--no-joy] [--mode navigation|joystick] [--panel]
+# 使い方: ./start_sim.sh [--headless] [--no-nav] [--no-rviz] [--no-joy] [--mode navigation|joystick] [--panel] [--server]
 #   --headless   Isaac Sim を画面なしで起動する
 #   --no-nav     Isaac Sim だけを起動する（Nav2 は起動しない）
 #   --no-rviz    rviz2 を起動しない
 #   --no-joy     ゲームパッド（joy_node / teleop_twist_joy）を起動しない
 #   --mode       指令切替ノードの初期モード（既定 navigation）
 #   --panel      テストパネル（異常の再現用）も起動する
+#   --server     ミッションサーバ（gRPC :50051）も起動する
 #
 # ROS_DOMAIN_ID は既定で 42（同じネットワーク上の他の ROS 2 ノードと混ざらないように）。
 # 環境変数で上書きできる: ROS_DOMAIN_ID=10 ./start_sim.sh
@@ -24,6 +25,7 @@ RVIZ=true
 JOY=true
 MODE=navigation
 PANEL=false
+SERVER=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --headless) HEADLESS="--headless" ;;
@@ -32,7 +34,8 @@ while [[ $# -gt 0 ]]; do
         --no-joy) JOY=false ;;
         --mode) MODE="$2"; shift ;;
         --panel) PANEL=true ;;
-        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+        --server) SERVER=true ;;
+        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
         *) echo "不明なオプション: $1" >&2; exit 1 ;;
     esac
     shift
@@ -54,7 +57,11 @@ set -u
 
 SIM_PID=""
 PANEL_PID=""
+SERVER_PID=""
 cleanup() {
+    if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+        kill "$SERVER_PID" 2>/dev/null || true
+    fi
     if [[ -n "$PANEL_PID" ]] && kill -0 "$PANEL_PID" 2>/dev/null; then
         kill "$PANEL_PID" 2>/dev/null || true
     fi
@@ -96,6 +103,12 @@ if [[ "$PANEL" == true ]]; then
         "$WS_DIR/.venv/bin/python" "$WS_DIR/sim/test_panel.py" > "$LOG_DIR/test_panel.log" 2>&1 &
         PANEL_PID=$!
     fi
+fi
+
+if [[ "$SERVER" == true ]]; then
+    echo "=== ミッションサーバを起動します（ログ: $LOG_DIR/mission_server.log）==="
+    "$WS_DIR/.venv/bin/python" -m mission_server > "$LOG_DIR/mission_server.log" 2>&1 &
+    SERVER_PID=$!
 fi
 
 if [[ "$NAV" == true ]]; then

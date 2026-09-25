@@ -210,8 +210,7 @@ class LocomotionCore:
             if self.state == S.NAVIGATING:
                 self._emit(CancelNavigation())
             result = TaskStatus.FAILED if self.state == S.FAULT else TaskStatus.CANCELED
-            self._finish_task(result)
-            self._set_state(self._idle_or_not_ready())
+            self._finish_task(result, self._idle_or_not_ready())
             self._commit()
             return task
 
@@ -235,16 +234,18 @@ class LocomotionCore:
             if mode == self.mode:
                 return self.state
 
-            if self.state == S.FAULT:
-                # 異常停止中のモード切替は、保持していたタスクを破棄する（結果は失敗）
-                self._finish_task(TaskStatus.FAILED)
-
             to_joystick = mode == Mode.JOYSTICK
             if to_joystick:
-                self._set_state(S.MANUAL)
+                next_state = S.MANUAL
             elif self.state in (S.MANUAL, S.FAULT):
-                self._set_state(self._idle_or_not_ready())
-            # 準備未完了・待機での上位指示 <-> UI 指示の切替は状態を変えない
+                next_state = self._idle_or_not_ready()
+            else:
+                next_state = self.state  # 準備未完了・待機での上位指示 <-> UI 指示の切替は状態を変えない
+            if self.state == S.FAULT:
+                # 異常停止中のモード切替は、保持していたタスクを破棄する（結果は失敗）
+                self._finish_task(TaskStatus.FAILED, next_state)
+            else:
+                self._set_state(next_state)
 
             if to_joystick != (self.mode == Mode.JOYSTICK):
                 self._emit(SetCommandMode(joystick=to_joystick))
@@ -263,11 +264,12 @@ class LocomotionCore:
             if point_id is not None and not self._point_exists(self.active_map_id, point_id):
                 raise NotFound(f"地点 {point_id} は地図 {self.active_map_id} にありません")
 
-            if self.state == S.FAULT:
-                self._finish_task(TaskStatus.FAILED)
             self._emit(SetInitialPose(pose=pose, point_id=point_id))
             self.localized = True
-            self._set_state(S.IDLE)
+            if self.state == S.FAULT:
+                self._finish_task(TaskStatus.FAILED, S.IDLE)
+            else:
+                self._set_state(S.IDLE)
             self._commit()
             return self.state
 
@@ -350,8 +352,7 @@ class LocomotionCore:
             if not self._is_current_goal(goal_seq):
                 return
             self.task.current_index = len(self.task.point_ids)
-            self._finish_task(TaskStatus.SUCCEEDED)
-            self._set_state(S.IDLE)
+            self._finish_task(TaskStatus.SUCCEEDED, S.IDLE)
             self._commit()
 
     def on_navigation_failed(self, goal_seq: int, fault: Fault) -> None:
@@ -398,11 +399,11 @@ class LocomotionCore:
                         return
                 else:
                     self._state_before_safety_stop = self.state
-                    if self.state == S.NAVIGATING:
+                    self._set_state(S.SAFETY_STOP)
+                    if self._state_before_safety_stop == S.NAVIGATING:
                         # 直ちに Nav2 の目標をキャンセルし、タスクは一時停止扱いで保持する
                         self._emit(CancelNavigation())
                         self._set_task_status(TaskStatus.PAUSED)
-                    self._set_state(S.SAFETY_STOP)
                 self.safety_stop_kind = kind
                 self._commit()
             elif self.state == S.SAFETY_STOP:
@@ -475,7 +476,9 @@ class LocomotionCore:
         self.task.status = status
         self.task.history.append(TaskEvent(at=self._clock(), status=status, robot_state=self.state, fault=fault))
 
-    def _finish_task(self, status):
+    def _finish_task(self, status, next_state):
+        """タスクを終わらせて next_state へ遷移する（実行記録には遷移後の状態を残す）"""
+        self._set_state(next_state)
         if self.task is None:
             return
         self._set_task_status(status)

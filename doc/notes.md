@@ -27,4 +27,6 @@
 | Sep 25, 2026 | 回転型 LiDAR を角に置くと、視野の一部に車体が映る | scan_merger で車体外形 + 余裕の範囲の点を除く |
 | Sep 25, 2026 | nav2_simple_commander の `waitUntilNav2Active()` は AMCL の初期位置を自分で設定しようとして待ち続ける | ノードの起動だけを待つ（`sim/tools/send_goal.py`） |
 | Sep 25, 2026 | ROS 2 の source で入る pytest プラグイン（launch_testing, launch_ros）は pytest 9 と互換がない | `mission_server/pyproject.toml` で読み込まない設定 |
+| Sep 25, 2026 | gRPC の Python サーバは既定で SO_REUSEPORT を使うため、同じポートで 2 つ目のサーバが起動でき、リクエストが新旧に振り分けられる | `grpc.so_reuseport=0` を指定し、2 つ目は起動に失敗させる |
+| Sep 25, 2026 | 実行記録（TaskEvent）の robot_state に遷移前の状態が入っていた | 遷移後の状態を記録するよう修正 |
 | Sep 25, 2026 | Isaac Sim の `python.sh` を kill しても、子プロセスの Isaac Sim 本体は止まらない | `start_sim.sh` はプロセスグループで起動・停止する |

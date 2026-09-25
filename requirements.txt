@@ -4,3 +4,4 @@ PySide6
 grpcio
 grpcio-tools
 pytest
+grpcio-status

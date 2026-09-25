@@ -6,14 +6,32 @@ Nav2 を土台に、ミッションサーバと UI を載せて移動台車を�
 
 現在は、Isaac Sim 上の全方向移動台車（O3dyn）を Nav2 とゲームパッドで動かせる段階。
 異常（安全停止・機器異常・自己位置喪失）を再現するテストパネルがある。
-ミッションサーバは状態遷移の中核と ROS 2 との接続まで実装済み（`mission_server/`）。gRPC と UI は未着手。
+ミッションサーバ（`mission_server/`）は、移動指示・一時停止・安全停止などを gRPC API で受け付けられる段階。UI は未着手。
 
 ## ミッションサーバ
 
 ```bash
+./start_sim.sh --server --panel                        # シミュレーション + Nav2 + ミッションサーバ + テストパネル
+.venv/bin/python -m mission_server                     # ミッションサーバだけを起動（gRPC :50051）
+.venv/bin/python -m mission_server.cli status          # 動作確認用クライアント（下記）
 scripts/gen_proto.sh                                   # proto を変更したら gRPC のコードを再生成（mission_server/gen/）
-cd mission_server && ../.venv/bin/python -m pytest -q  # 単体テスト（仕様書 4 章の遷移表の各行ほか）
+cd mission_server && ../.venv/bin/python -m pytest -q  # テスト（ROS 2 なしで動く）
 ```
+
+動作確認用クライアント `python -m mission_server.cli [--role operator|upper-system|integrator] <コマンド>`
+
+| コマンド | 内容 |
+|---|---|
+| `status` / `watch` / `pose` | 状態 / 状態の変化を表示し続ける / 位置・速度を表示し続ける |
+| `points` / `tasks` / `task ID` | 地点の一覧 / 実行記録の一覧 / 実行記録の詳細（状態の履歴） |
+| `init-pose POINT_ID` / `init-pose --pose X Y YAW_DEG` | 初期位置の設定 |
+| `mode upper\|operator\|joystick` | モード切替 |
+| `go POINT_ID ...` | 移動指示（複数なら巡回） |
+| `pause` / `resume` / `stop` / `retry` | 保持中のタスクへの操作 |
+| `reset-safety` | 非常停止のリセット |
+| `add-point ID [--pose X Y YAW_DEG]` | 地点の登録（`--pose` 省略時は現在位置。`--role integrator`） |
+
+役割は gRPC の metadata `x-locomotion-role` で渡す（本番では Envoy が認証結果を入れる想定）。
 
 | パス | 内容 |
 |---|---|
@@ -23,6 +41,9 @@ cd mission_server && ../.venv/bin/python -m pytest -q  # 単体テスト（仕�
 | `mission_server/tests/test_rules.py` | 受理・拒否、権限、冪等性、異常検知のテスト |
 | `mission_server/mission_server/ros_adapter.py` | ROS 2 との接続（Nav2・AMCL・安全系・指令切替ノード・map_server） |
 | `mission_server/mission_server/store.py` | 地図・地点・ロボット設定の保存（`data/`） |
+| `mission_server/mission_server/grpc_api/` | gRPC サービス（RobotService, TaskService、MapService・PointService の最小限） |
+| `mission_server/mission_server/cli.py` | 動作確認用クライアント |
+| `mission_server/tests/test_grpc_api.py` | gRPC API のテスト（ROS 2 アダプタは偽物に差し替え） |
 | `mission_server/tools/try_with_sim.py` | 中核 + ROS 2 接続をシミュレーションで試す（移動・一時停止・安全停止） |
 | `data/` | 地図・地点・ロボット設定（シミュレーション用の倉庫の地図と地点 home, A〜D） |
 
@@ -41,7 +62,7 @@ source /opt/ros/jazzy/setup.bash && source ~/future_ws/navigation_ws/install/set
 export ROS_DOMAIN_ID=42
 ```
 
-オプション: `--panel`（テストパネルも起動）, `--headless`（Isaac Sim を画面なし）, `--no-nav`（Isaac Sim のみ）, `--no-rviz`, `--no-joy`, `--mode joystick`
+オプション: `--server`（ミッションサーバも起動）, `--panel`（テストパネルも起動）, `--headless`（Isaac Sim を画面なし）, `--no-nav`（Isaac Sim のみ）, `--no-rviz`, `--no-joy`, `--mode joystick`
 
 ## 操作
 

@@ -7,7 +7,7 @@ name = "mission_server"
 version = "0.1.0"
 description = "Locomotion mission server: gRPC API over Nav2 (see doc/locomotion_spec.md)"
 requires-python = ">=3.12"
-dependencies = ["grpcio", "protobuf"]
+dependencies = ["grpcio", "grpcio-status", "protobuf", "pyyaml"]
 
 [tool.setuptools.packages.find]
 # mission_server 本体と、scripts/gen_proto.sh が gen/ に生成する locomotion.v1

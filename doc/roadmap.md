@@ -34,8 +34,8 @@ Sep 25, 2026 作成
   - 安全系: `/safety/state` の購読、`/safety/reset` の送信
   - 指令切替ノード: モードの切り替え
 - [x] **1-4 地点の保存（最小）**: 1 枚の地図の中の地点 ID と姿勢を保存する
-- [ ] **1-5 gRPC サービス**: `RobotService`（GetStatus / WatchStatus / WatchPose / SetMode / SetInitialPose / ResetSafetyStop）と `TaskService`（StartTask / PauseTask / ResumeTask / StopTask / RetryTask / GetTask / ListTasks）。地点の登録は `PointService` の最小限（CreatePoint / ListPoints）
-- [ ] **1-6 確認用のコマンドラインクライアント**
+- [x] **1-5 gRPC サービス**: `RobotService`（GetStatus / WatchStatus / WatchPose / SetMode / SetInitialPose / ResetSafetyStop）と `TaskService`（StartTask / PauseTask / ResumeTask / StopTask / RetryTask / GetTask / ListTasks）。地点の登録は `PointService` の最小限（CreatePoint / ListPoints）
+- [x] **1-6 確認用のコマンドラインクライアント**
 
 **確認できること**
 - コマンドラインから地点 ID を指定して移動し、一時停止・再開・停止ができる

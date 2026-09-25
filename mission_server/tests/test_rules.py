@@ -279,3 +279,18 @@ def test_undecided_stop_rejected_during_safety_stop(core, rec):
     core.on_safety_signal(1)
     with pytest.raises(PreconditionFailed):
         core.stop_task(OP, task.task_id)
+
+
+def test_task_history_records_state_after_transition(core, rec):
+    """実行記録の各行には、その出来事のあとのロボットの状態を残す"""
+    task = make_navigating(core, rec)
+    core.on_safety_signal(1)
+    core.on_safety_signal(0)
+    core.resume_task(OP, task.task_id)
+    core.on_navigation_succeeded(2)
+    assert [(e.status, e.robot_state) for e in task.history] == [
+        (TaskStatus.RUNNING, S.NAVIGATING),
+        (TaskStatus.PAUSED, S.SAFETY_STOP),
+        (TaskStatus.RUNNING, S.NAVIGATING),
+        (TaskStatus.SUCCEEDED, S.IDLE),
+    ]
