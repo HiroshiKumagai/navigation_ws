@@ -1,4 +1,4 @@
-"""シミュレーションの真値（/odom。初期位置がワールド原点のとき map と一致）を AMCL の初期位置として送る。
+"""シミュレーションの真値（/sim/ground_truth。ワールド座標 = map）を AMCL の初期位置として送る。
 
 Nav2 を起動し直したときなど、ロボットが原点以外にいる場合に使う。
 使い方: python3 sim/tools/set_initial_pose_from_sim.py
@@ -14,7 +14,7 @@ def main():
     rclpy.init()
     node = Node("set_initial_pose_from_sim", parameter_overrides=[rclpy.parameter.Parameter("use_sim_time", value=True)])
     odom = []
-    node.create_subscription(Odometry, "odom", lambda m: odom.append(m), 10)
+    node.create_subscription(Odometry, "/sim/ground_truth", lambda m: odom.append(m), 10)
     pub = node.create_publisher(PoseWithCovarianceStamped, "initialpose", 10)
     while not odom or pub.get_subscription_count() == 0:
         rclpy.spin_once(node, timeout_sec=0.5)

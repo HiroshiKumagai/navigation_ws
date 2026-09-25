@@ -12,6 +12,7 @@ ROS 2 インタフェース（Play 中のみ有効）:
            /scan_rear_right       sensor_msgs/LaserScan 2D LiDAR（360°, 0.05〜40 m, 10 Hz）
            /joint_states          sensor_msgs/JointState
            /clock                 rosgraph_msgs/Clock
+    試験用（異常の再現）は sim_test_hooks.py を参照（/safety/state, /sim/* ほか）
 
 ホイール速度は、付属の HolonomicController ではなくメカナムの逆運動学で計算する。
 HolonomicController は力のつり合いを解く方式のため、O3dyn では速度が約 1/3 になり旋回の符号も逆になる。
@@ -119,7 +120,8 @@ nodes = [
     ("SubTwist", "isaacsim.ros2.bridge.ROS2SubscribeTwist"),
     ("HoloSetup", "isaacsim.robot.wheeled_robots.HolonomicRobotUsdSetup"),
     ("ArticulationController", "isaacsim.core.nodes.IsaacArticulationController"),
-    # オドメトリと odom -> base_link
+    # オドメトリと odom -> base_link（台車ドライバ異常の模擬中は DriveGate で止める）
+    ("DriveGate", "omni.graph.action.Branch"),
     ("ComputeOdom", "isaacsim.core.nodes.IsaacComputeOdometry"),
     ("PubOdom", "isaacsim.ros2.bridge.ROS2PublishOdometry"),
     ("PubOdomTf", "isaacsim.ros2.bridge.ROS2PublishRawTransformTree"),
@@ -133,25 +135,24 @@ connect = [
     ("Context.outputs:context", "SubTwist.inputs:context"),
     ("Tick.outputs:tick", "ArticulationController.inputs:execIn"),
     ("HoloSetup.outputs:wheelDofNames", "ArticulationController.inputs:jointNames"),
-    ("Tick.outputs:tick", "ComputeOdom.inputs:execIn"),
+    ("Tick.outputs:tick", "DriveGate.inputs:execIn"),
+    ("DriveGate.outputs:execTrue", "ComputeOdom.inputs:execIn"),
     ("ComputeOdom.outputs:execOut", "PubOdom.inputs:execIn"),
     ("ComputeOdom.outputs:execOut", "PubOdomTf.inputs:execIn"),
     ("Context.outputs:context", "PubOdom.inputs:context"),
     ("Context.outputs:context", "PubOdomTf.inputs:context"),
     ("SimTime.outputs:simulationTime", "PubOdom.inputs:timeStamp"),
     ("SimTime.outputs:simulationTime", "PubOdomTf.inputs:timeStamp"),
-    ("ComputeOdom.outputs:position", "PubOdom.inputs:position"),
-    ("ComputeOdom.outputs:orientation", "PubOdom.inputs:orientation"),
     ("ComputeOdom.outputs:linearVelocity", "PubOdom.inputs:linearVelocity"),
     ("ComputeOdom.outputs:angularVelocity", "PubOdom.inputs:angularVelocity"),
-    ("ComputeOdom.outputs:position", "PubOdomTf.inputs:translation"),
-    ("ComputeOdom.outputs:orientation", "PubOdomTf.inputs:rotation"),
-    ("Tick.outputs:tick", "PubJointState.inputs:execIn"),
+    # 姿勢（position / orientation）は sim_test_hooks がワープ補正を掛けて毎フレーム書き込む
+    ("DriveGate.outputs:execTrue", "PubJointState.inputs:execIn"),
     ("Context.outputs:context", "PubJointState.inputs:context"),
     ("SimTime.outputs:simulationTime", "PubJointState.inputs:timeStamp"),
 ]
 values = [
     ("SubTwist.inputs:topicName", "cmd_vel"),
+    ("DriveGate.inputs:condition", True),
     ("HoloSetup.inputs:usePath", True),
     ("HoloSetup.inputs:robotPrimPath", ROBOT_PATH),
     ("HoloSetup.inputs:comPrimPath", f"{BASE_LINK_PATH}/com_offset"),
@@ -224,7 +225,10 @@ class MecanumKinematics:
         self.twist_angular = og.Controller.attribute(f"{graph_path}/SubTwist.outputs:angularVelocity")
         self.velocity_command = og.Controller.attribute(f"{graph_path}/ArticulationController.inputs:velocityCommand")
 
-    def update(self):
+    def update(self, enabled=True):
+        if not enabled:
+            self.velocity_command.set([0.0] * len(self.radius))
+            return
         vx, vy, _ = self.twist_linear.get()
         wz = self.twist_angular.get()[2]
         speed = math.hypot(vx, vy)
@@ -242,16 +246,22 @@ class MecanumKinematics:
 app_utils.play()
 simulation_app.update()
 kinematics = MecanumKinematics(GRAPH_PATH)
+from sim_test_hooks import SimTestHooks  # noqa: E402
+
+test_hooks = SimTestHooks(GRAPH_PATH, ROBOT_PATH, [name for name, _, _ in LIDARS])
 spawned = UsdGeom.XformCache().GetLocalToWorldTransform(stage.GetPrimAtPath(BASE_LINK_PATH)).ExtractTranslation()
 print(f"O3DYN_BRINGUP_READY base_link world=({spawned[0]:.2f}, {spawned[1]:.2f})", flush=True)
 
 frame = 0
 while simulation_app.is_running():
-    kinematics.update()
+    test_hooks.before_update()
+    kinematics.update(enabled=test_hooks.drive_enabled)
     simulation_app.update()
+    test_hooks.after_update()
     frame += 1
     if args.test_frames and frame >= args.test_frames:
         break
 
+test_hooks.shutdown()
 app_utils.stop()
 simulation_app.close()
