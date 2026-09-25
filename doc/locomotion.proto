@@ -1,0 +1,562 @@
+// セミヒューマノイド ロコモーション ミッションサーバ API（骨格・たたき台）
+//
+// 設計方針
+// - 指示系RPCは即座に受理／拒否のみを返す。進捗は RobotService.WatchStatus で見る。
+// - 拒否は gRPC 標準ステータスで返す。
+//     状態が許さない操作   : FAILED_PRECONDITION（詳細に RejectionDetail を付与）
+//     権限不足             : PERMISSION_DENIED
+//     版の不一致（楽観ロック）: ABORTED
+//     対象なし             : NOT_FOUND
+// - 役割（上位システム／オペレータ／導入担当者）は認証情報から Envoy＋サーバで判定する。
+//   各RPCのコメントに必要な役割を記す。
+// - 座標はすべて使用中地図の map フレーム。単位は m, rad。
+
+syntax = "proto3";
+
+package locomotion.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================================
+// 共通
+// ============================================================
+
+message Pose2D {
+  double x = 1;    // [m]
+  double y = 2;    // [m]
+  double yaw = 3;  // [rad]
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  MODE_UPPER = 1;     // 上位指示モード
+  MODE_OPERATOR = 2;  // UI指示モード
+  MODE_JOYSTICK = 3;  // ジョイスティックモード
+}
+
+enum RobotState {
+  ROBOT_STATE_UNSPECIFIED = 0;
+  ROBOT_STATE_NOT_READY = 1;    // 準備未完了
+  ROBOT_STATE_IDLE = 2;         // 待機
+  ROBOT_STATE_NAVIGATING = 3;   // 移動中
+  ROBOT_STATE_PAUSED = 4;       // 一時停止
+  ROBOT_STATE_FAULT = 5;        // 異常停止
+  ROBOT_STATE_SAFETY_STOP = 6;  // 安全停止
+  ROBOT_STATE_MANUAL = 7;       // 手動操作
+  ROBOT_STATE_MAPPING = 8;      // 地図作成中
+}
+
+// 移動中の表示属性
+enum NavActivity {
+  NAV_ACTIVITY_UNSPECIFIED = 0;
+  NAV_ACTIVITY_NORMAL = 1;
+  NAV_ACTIVITY_RECOVERING = 2;  // 回避動作中（Nav2のリカバリ実行中）
+}
+
+enum SafetyStopKind {
+  SAFETY_STOP_KIND_UNSPECIFIED = 0;
+  SAFETY_STOP_KIND_PROTECTIVE = 1;  // 保護停止（信号解除で抜ける）
+  SAFETY_STOP_KIND_EMERGENCY = 2;   // 非常停止（リセット操作も必要）
+}
+
+enum FaultCategory {
+  FAULT_CATEGORY_UNSPECIFIED = 0;
+  FAULT_CATEGORY_PATH_BLOCKED = 1;       // 経路閉塞
+  FAULT_CATEGORY_GOAL_UNREACHABLE = 2;   // 目標到達不能
+  FAULT_CATEGORY_LOCALIZATION_LOST = 3;  // 自己位置喪失
+  FAULT_CATEGORY_DEVICE_ERROR = 4;       // 機器異常
+}
+
+// 異常は「分類」（UI表示と復旧操作の選択用）と「詳細」（ログ・サポート用）の二段構え
+message Fault {
+  FaultCategory category = 1;
+  string detail_code = 2;     // Nav2のエラーコード、停止したノード名など
+  string detail_message = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+
+enum ThresholdLevel {
+  THRESHOLD_LEVEL_UNSPECIFIED = 0;
+  THRESHOLD_LEVEL_STRICT = 1;    // 厳しめ
+  THRESHOLD_LEVEL_STANDARD = 2;  // 標準
+  THRESHOLD_LEVEL_LOOSE = 3;     // 緩め
+}
+
+message LocalizationStatus {
+  bool localized = 1;            // しきい値判定の結果
+  double covariance_xy = 2;      // 判定に用いた値（サポート用）
+  double covariance_yaw = 3;
+  ThresholdLevel applied_level = 4;
+}
+
+// FAILED_PRECONDITION に付与する詳細
+message RejectionDetail {
+  RobotState current_state = 1;
+  Mode current_mode = 2;
+  string reason = 3;
+}
+
+// ============================================================
+// RobotService：状態・モード・初期位置
+// ============================================================
+
+service RobotService {
+  // 現在の状態を1回取得する。役割：全員
+  rpc GetStatus(GetStatusRequest) returns (RobotStatus);
+
+  // 状態の変化時に配信する（接続直後に現在値を1回送る）。役割：全員
+  rpc WatchStatus(WatchStatusRequest) returns (stream RobotStatus);
+
+  // 位置・速度を周期配信する。役割：全員
+  rpc WatchPose(WatchPoseRequest) returns (stream PoseUpdate);
+
+  // モード切替。準備未完了・待機・異常停止・手動操作中のみ受理。
+  // 異常停止中に切り替えた場合、保持していたタスクは破棄する（FAILED）。役割：オペレータ以上
+  rpc SetMode(SetModeRequest) returns (SetModeResponse);
+
+  // 初期位置の設定。準備未完了・異常停止（自己位置喪失）中に受理。
+  // 異常停止中に設定した場合、保持していたタスクは破棄する（FAILED）。役割：オペレータ以上
+  rpc SetInitialPose(SetInitialPoseRequest) returns (SetInitialPoseResponse);
+
+  // 非常停止解除後のリセット。リセット後、移動中から入った場合は一時停止へ、
+  // それ以外は安全停止前の状態へ戻る。役割：オペレータ以上
+  rpc ResetSafetyStop(ResetSafetyStopRequest) returns (ResetSafetyStopResponse);
+}
+
+message GetStatusRequest {}
+message WatchStatusRequest {}
+
+message RobotStatus {
+  uint64 sequence = 1;  // 配信ごとに単調増加。取りこぼし検知用
+  google.protobuf.Timestamp updated_at = 2;
+
+  RobotState state = 3;
+  Mode mode = 4;
+  NavActivity nav_activity = 5;           // state == NAVIGATING のとき有効
+  SafetyStopKind safety_stop_kind = 6;    // state == SAFETY_STOP のとき有効
+  Fault fault = 7;                        // state == FAULT のとき有効
+
+  string active_map_id = 8;
+  uint64 active_map_version = 9;
+  LocalizationStatus localization = 10;
+
+  bool joystick_accepting = 11;           // 速度指令の出口がジョイスティック側か
+  Task active_task = 12;                  // 保持中のタスク（なければ未設定）
+}
+
+message WatchPoseRequest {
+  double rate_hz = 1;  // 希望周期。サーバ側で上限・下限を丸める（既定 5Hz）
+}
+
+message PoseUpdate {
+  google.protobuf.Timestamp stamp = 1;
+  string map_id = 2;
+  Pose2D pose = 3;
+  // 速度はロボット座標系（base_link）。台車はメカナムのため横方向成分を持つ
+  double linear_velocity_x = 4;  // [m/s] 前後
+  double angular_velocity = 5;   // [rad/s]
+  double linear_velocity_y = 6;  // [m/s] 左右
+}
+
+message SetModeRequest {
+  Mode mode = 1;
+}
+message SetModeResponse {
+  // ジョイスティックモードへの切替なら MANUAL。
+  // 手動操作から戻る場合、地図の有無と自己位置判定により IDLE / NOT_READY
+  RobotState resulting_state = 1;
+}
+
+message SetInitialPoseRequest {
+  oneof source {
+    Pose2D pose = 1;       // 地図上で指定
+    string point_id = 2;   // 登録地点に置いたことにする
+  }
+}
+message SetInitialPoseResponse {}
+
+message ResetSafetyStopRequest {}
+message ResetSafetyStopResponse {}
+
+// ============================================================
+// TaskService：移動指示と実行記録
+// ============================================================
+
+service TaskService {
+  // 移動指示。point_ids が1件なら単発移動、複数なら巡回。
+  // 待機中のみ受理。役割：上位指示モードなら上位システム、UI指示モードならオペレータ
+  rpc StartTask(StartTaskRequest) returns (StartTaskResponse);
+
+  // 移動中 → 一時停止。役割：オペレータ以上（モードに関係なく常時）
+  rpc PauseTask(TaskCommandRequest) returns (TaskCommandResponse);
+
+  // 一時停止 → 移動中。役割：オペレータ以上
+  rpc ResumeTask(TaskCommandRequest) returns (TaskCommandResponse);
+
+  // 移動中／一時停止／異常停止 → 待機。
+  // タスクは移動中・一時停止からなら CANCELED、異常停止からなら FAILED として終了する。
+  // 役割：オペレータ以上（上位システムも自身が出したタスクは停止可）
+  rpc StopTask(TaskCommandRequest) returns (TaskCommandResponse);
+
+  // 異常停止 → 移動中。保持していたタスクを再送する。役割：オペレータ以上
+  rpc RetryTask(TaskCommandRequest) returns (TaskCommandResponse);
+
+  // 実行記録の参照。役割：全員
+  rpc GetTask(GetTaskRequest) returns (Task);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+}
+
+enum TaskSource {
+  TASK_SOURCE_UNSPECIFIED = 0;
+  TASK_SOURCE_UPPER = 1;
+  TASK_SOURCE_OPERATOR = 2;
+}
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_RUNNING = 1;
+  TASK_STATUS_PAUSED = 2;     // 一時停止中、または移動中から安全停止に入った（保持中）
+  TASK_STATUS_FAULTED = 3;    // 異常停止中（保持中）。安全停止に入ってもこの値を保つ
+  TASK_STATUS_SUCCEEDED = 4;  // 成功：すべての地点に到達
+  TASK_STATUS_CANCELED = 5;   // 中断：移動中・一時停止から停止指示で破棄
+  TASK_STATUS_FAILED = 6;     // 失敗：異常停止から復旧せずに破棄
+                              //（停止指示、初期位置の再設定、ジョイスティックモードへの切替）
+}
+
+message TaskEvent {
+  google.protobuf.Timestamp at = 1;
+  TaskStatus status = 2;
+  RobotState robot_state = 3;
+  Fault fault = 4;            // 異常時のみ
+}
+
+message Task {
+  string task_id = 1;              // サーバが採番
+  string request_id = 2;           // 指示元が付けた要求ID
+  TaskSource source = 3;
+  string map_id = 4;
+  uint64 map_version = 5;
+  repeated string point_ids = 6;
+  int32 current_index = 7;         // 巡回中の現在の目標（point_ids の添字）
+  TaskStatus status = 8;
+  repeated TaskEvent history = 9;  // 状態の履歴（GetTask でのみ全件）
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp finished_at = 11;
+}
+
+message StartTaskRequest {
+  // 冪等化キー。同じ request_id の再送には既存タスクを返し、二重登録しない
+  string request_id = 1;
+  repeated string point_ids = 2;
+  // 指定時、使用中地図と異なれば拒否する（意図しない地図での実行を防ぐ）
+  string expected_map_id = 3;
+}
+message StartTaskResponse {
+  Task task = 1;
+}
+
+message TaskCommandRequest {
+  string task_id = 1;
+}
+message TaskCommandResponse {
+  Task task = 1;
+}
+
+message GetTaskRequest {
+  string task_id = 1;
+}
+
+message ListTasksRequest {
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp to = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+message ListTasksResponse {
+  repeated Task tasks = 1;  // history は含めない
+  string next_page_token = 2;
+}
+
+// ============================================================
+// MapService：地図作成・編集・切替
+// ============================================================
+
+service MapService {
+  // 参照。役割：全員
+  rpc ListMaps(ListMapsRequest) returns (ListMapsResponse);
+  rpc GetMap(GetMapRequest) returns (MapInfo);
+  // 地図画像を分割して送る
+  rpc DownloadMapImage(DownloadMapImageRequest) returns (stream MapImageChunk);
+
+  // 地図作成。手動操作中のみ受理。役割：導入担当者
+  rpc StartMapping(StartMappingRequest) returns (StartMappingResponse);
+  // 生成中の地図を低頻度（1Hz程度）で全体画像として配信
+  rpc WatchMappingPreview(WatchMappingPreviewRequest) returns (stream MapPreviewFrame);
+  rpc SaveMapping(SaveMappingRequest) returns (SaveMappingResponse);
+  rpc DiscardMapping(DiscardMappingRequest) returns (DiscardMappingResponse);
+
+  // 編集。版番号による楽観ロック。役割：導入担当者
+  rpc EraseMapRegions(EraseMapRegionsRequest) returns (MapInfo);  // ノイズ除去
+  rpc SetAreas(SetAreasRequest) returns (MapInfo);                 // エリアを全件置換
+  rpc RevertMap(RevertMapRequest) returns (MapInfo);               // 過去の版に戻す
+  rpc DuplicateMap(DuplicateMapRequest) returns (MapInfo);         // 地点も同じIDでコピー
+  rpc DeleteMap(DeleteMapRequest) returns (DeleteMapResponse);
+
+  // 使用する地図の切替。待機・準備未完了中のみ受理。切替後は準備未完了。役割：オペレータ以上
+  rpc ActivateMap(ActivateMapRequest) returns (ActivateMapResponse);
+}
+
+enum AreaType {
+  AREA_TYPE_UNSPECIFIED = 0;
+  AREA_TYPE_KEEPOUT = 1;      // 立入禁止
+  AREA_TYPE_SPEED_LIMIT = 2;  // 速度制限
+}
+
+message Polygon {
+  repeated Pose2D vertices = 1;  // yaw は未使用
+}
+
+message Area {
+  string area_id = 1;
+  AreaType type = 2;
+  Polygon polygon = 3;
+  double speed_limit = 4;  // [m/s] type == SPEED_LIMIT のとき有効
+}
+
+message MapInfo {
+  string map_id = 1;
+  string name = 2;
+  uint64 version = 3;  // 地図本体とエリアの版（地点は地点ごとの版で管理）
+  double resolution = 4;  // [m/pixel]
+  uint32 width = 5;
+  uint32 height = 6;
+  Pose2D origin = 7;
+  repeated Area areas = 8;
+  // 未設定なら全体の既定値を使う
+  ThresholdLevel localization_threshold = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message ListMapsRequest {}
+message ListMapsResponse {
+  repeated MapInfo maps = 1;  // areas は含めない
+}
+
+message GetMapRequest {
+  string map_id = 1;
+}
+
+message DownloadMapImageRequest {
+  string map_id = 1;
+  uint64 version = 2;  // 0 なら最新
+}
+message MapImageChunk {
+  bytes data = 1;          // PNG を分割したもの
+  uint32 total_bytes = 2;  // 最初のチャンクでのみ設定
+}
+
+message StartMappingRequest {
+  oneof target {
+    NewMapSpec new_map = 1;
+    RescanSpec rescan = 2;
+  }
+}
+message NewMapSpec {
+  string map_id = 1;
+  string name = 2;
+}
+message RescanSpec {
+  string map_id = 1;
+  uint64 expected_version = 2;
+}
+message StartMappingResponse {}
+
+message WatchMappingPreviewRequest {}
+message MapPreviewFrame {
+  google.protobuf.Timestamp stamp = 1;
+  bytes png = 2;  // 縮小済みの全体画像
+  double resolution = 3;
+  Pose2D origin = 4;
+  Pose2D robot_pose = 5;
+}
+
+message SaveMappingRequest {}
+message SaveMappingResponse {
+  MapInfo map = 1;
+  // 再スキャンの場合、「再確認が必要」になった地点の数
+  int32 points_need_recheck = 2;
+}
+
+message DiscardMappingRequest {}
+message DiscardMappingResponse {}
+
+message EraseMapRegionsRequest {
+  string map_id = 1;
+  uint64 expected_version = 2;
+  repeated Polygon regions = 3;  // 空き領域として塗りつぶす
+}
+
+message SetAreasRequest {
+  string map_id = 1;
+  uint64 expected_version = 2;
+  repeated Area areas = 3;
+}
+
+message RevertMapRequest {
+  string map_id = 1;
+  uint64 expected_version = 2;
+  uint64 target_version = 3;
+}
+
+message DuplicateMapRequest {
+  string source_map_id = 1;
+  string new_map_id = 2;
+  string new_name = 3;
+}
+
+message DeleteMapRequest {
+  string map_id = 1;
+  uint64 expected_version = 2;
+}
+message DeleteMapResponse {}
+
+message ActivateMapRequest {
+  string map_id = 1;
+}
+message ActivateMapResponse {}
+
+// ============================================================
+// PointService：目標地点
+// ============================================================
+
+service PointService {
+  // 参照。役割：全員
+  rpc ListPoints(ListPointsRequest) returns (ListPointsResponse);
+  rpc GetPoint(GetPointRequest) returns (Point);
+
+  // 登録・編集。役割：導入担当者
+  rpc CreatePoint(CreatePointRequest) returns (Point);
+  rpc UpdatePoint(UpdatePointRequest) returns (Point);
+  rpc DeletePoint(DeletePointRequest) returns (DeletePointResponse);
+  // 再スキャン後の再確認を完了にする（必要なら姿勢も更新）
+  rpc MarkPointVerified(MarkPointVerifiedRequest) returns (Point);
+}
+
+enum PointKind {
+  POINT_KIND_UNSPECIFIED = 0;
+  POINT_KIND_WORK = 1;     // 作業
+  POINT_KIND_STANDBY = 2;  // 待機
+  POINT_KIND_CHARGE = 3;   // 充電
+}
+
+message Tolerance {
+  double xy = 1;   // [m]
+  double yaw = 2;  // [rad]
+}
+
+message Point {
+  string map_id = 1;
+  string point_id = 2;  // 地図内で一意。利用者が付ける
+  string name = 3;
+  Pose2D pose = 4;
+  string move_mode_id = 5;  // ConfigService.ListMoveModes の ID（BTの選択）
+  Tolerance tolerance = 6;
+  PointKind kind = 7;
+  bool needs_recheck = 8;   // 再スキャン後、再確認が済んでいない
+  uint64 version = 9;
+}
+
+message ListPointsRequest {
+  string map_id = 1;
+}
+message ListPointsResponse {
+  repeated Point points = 1;
+}
+
+message GetPointRequest {
+  string map_id = 1;
+  string point_id = 2;
+}
+
+message CreatePointRequest {
+  string map_id = 1;
+  string point_id = 2;
+  string name = 3;
+  oneof pose_source {
+    Pose2D pose = 4;              // 地図上で指定
+    bool use_current_pose = 5;    // ティーチング：現在位置を記録（自己位置が正常な場合のみ）
+  }
+  string move_mode_id = 6;
+  Tolerance tolerance = 7;
+  PointKind kind = 8;
+}
+
+message UpdatePointRequest {
+  string map_id = 1;
+  string point_id = 2;
+  uint64 expected_version = 3;
+  Point point = 4;  // 更新後の内容（map_id / point_id / version は無視）
+}
+
+message DeletePointRequest {
+  string map_id = 1;
+  string point_id = 2;
+  uint64 expected_version = 3;
+}
+message DeletePointResponse {}
+
+message MarkPointVerifiedRequest {
+  string map_id = 1;
+  string point_id = 2;
+  uint64 expected_version = 3;
+  oneof pose_source {
+    bool keep_pose = 4;
+    Pose2D pose = 5;
+    bool use_current_pose = 6;
+  }
+}
+
+// ============================================================
+// ConfigService：設定
+// ============================================================
+
+service ConfigService {
+  // 役割：全員
+  rpc GetConfig(GetConfigRequest) returns (Config);
+  rpc ListMoveModes(ListMoveModesRequest) returns (ListMoveModesResponse);
+
+  // 役割：導入担当者
+  rpc UpdateConfig(UpdateConfigRequest) returns (Config);
+  rpc SetMapLocalizationThreshold(SetMapLocalizationThresholdRequest) returns (MapInfo);
+}
+
+message Config {
+  ThresholdLevel default_localization_threshold = 1;
+  uint64 version = 2;
+}
+
+// 移動モード（自社が用意したBT）。ユーザは選ぶだけで編集はできない
+message MoveMode {
+  string move_mode_id = 1;
+  string display_name = 2;  // 例：通常移動、狭所慎重、最終アプローチ
+  string description = 3;
+}
+
+message GetConfigRequest {}
+message ListMoveModesRequest {}
+message ListMoveModesResponse {
+  repeated MoveMode move_modes = 1;
+}
+
+message UpdateConfigRequest {
+  uint64 expected_version = 1;
+  ThresholdLevel default_localization_threshold = 2;
+}
+
+message SetMapLocalizationThresholdRequest {
+  string map_id = 1;
+  uint64 expected_version = 2;
+  // UNSPECIFIED で既定値に戻す
+  ThresholdLevel level = 3;
+}

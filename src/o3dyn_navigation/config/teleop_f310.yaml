@@ -1,0 +1,29 @@
+# Logicool F310（XInput モード: 背面スイッチ X）用の teleop_twist_joy 設定。
+# joy_node の並び: 軸 0=左スティック左右, 1=左スティック上下, 3=右スティック左右
+#                  ボタン 4=LB, 5=RB
+joy_node:
+  ros__parameters:
+    device_name: "Logitech Gamepad F310"
+    deadzone: 0.05
+    autorepeat_rate: 20.0
+
+teleop_twist_joy_node:
+  ros__parameters:
+    require_enable_button: true
+    enable_button: 4          # LB を押している間だけ動く
+    enable_turbo_button: 5    # LB + RB で高速
+    axis_linear:
+      x: 1                    # 左スティック上下: 前後
+      y: 0                    # 左スティック左右: 横移動（全方向移動）
+    scale_linear:
+      x: 0.3
+      y: 0.3
+    scale_linear_turbo:
+      x: 0.5
+      y: 0.5
+    axis_angular:
+      yaw: 3                  # 右スティック左右: 旋回
+    scale_angular:
+      yaw: 0.4
+    scale_angular_turbo:
+      yaw: 0.8
