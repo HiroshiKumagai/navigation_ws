@@ -7,3 +7,5 @@ log/
 __pycache__/
 *.pyc
 .venv/
+mission_server/gen/
+*.egg-info/

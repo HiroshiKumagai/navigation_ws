@@ -1,3 +1,6 @@
 # ワークスペースの Python 環境（.venv）に入れるパッケージ。
 # .venv は --system-site-packages で作り、ROS 2 の rclpy やメッセージ型、numpy / scipy / PIL / yaml はシステムのものを使う。
 PySide6
+grpcio
+grpcio-tools
+pytest

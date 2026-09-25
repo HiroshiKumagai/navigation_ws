@@ -1,11 +1,26 @@
 # navigation_ws — セミヒューマノイド ロコモーション開発環境
 
 Nav2 を土台に、ミッションサーバと UI を載せて移動台車を運用するソフトウェアの開発ワークスペース。
-仕様は [doc/locomotion_spec.md](doc/locomotion_spec.md)、API は [doc/locomotion.proto](doc/locomotion.proto) を正とする。
+仕様は [doc/locomotion_spec.md](doc/locomotion_spec.md)、API は [proto/locomotion/v1/locomotion.proto](proto/locomotion/v1/locomotion.proto) を正とする。
 開発の進め方は [doc/roadmap.md](doc/roadmap.md)。
 
 現在は、Isaac Sim 上の全方向移動台車（O3dyn）を Nav2 とゲームパッドで動かせる段階。
-異常（安全停止・機器異常・自己位置喪失）を再現するテストパネルがある。ミッションサーバ・UI は未着手。
+異常（安全停止・機器異常・自己位置喪失）を再現するテストパネルがある。
+ミッションサーバは状態遷移の中核（`mission_server/`）まで実装済み。ROS 2・gRPC との接続と UI は未着手。
+
+## ミッションサーバ
+
+```bash
+scripts/gen_proto.sh                                   # proto を変更したら gRPC のコードを再生成（mission_server/gen/）
+cd mission_server && ../.venv/bin/python -m pytest -q  # 単体テスト（仕様書 4 章の遷移表の各行ほか）
+```
+
+| パス | 内容 |
+|---|---|
+| `proto/locomotion/v1/locomotion.proto` | gRPC API の定義 |
+| `mission_server/mission_server/core/` | 状態遷移とタスク管理（ROS 2 にも gRPC にも依存しない） |
+| `mission_server/tests/test_transitions.py` | 遷移表の各行のテスト（テスト名の番号 = 表の行） |
+| `mission_server/tests/test_rules.py` | 受理・拒否、権限、冪等性、異常検知のテスト |
 
 ## クイックスタート
 
@@ -114,6 +129,7 @@ Isaac Sim（sim/o3dyn_bringup.py）                    ROS 2（src/o3dyn_navigat
 | `src/o3dyn_navigation/` | ROS 2 パッケージ: Nav2 設定・地図・scan_merger・cmd_vel_switch・起動ファイル |
 | `dev_setting/` | 環境構築スクリプト（下記） |
 | `requirements.txt` | `.venv` に入れる Python パッケージ |
+| `proto/`, `mission_server/`, `scripts/gen_proto.sh` | API 定義とミッションサーバ（上記） |
 | `.claude/skills/` | Claude Code 用の Isaac Sim スキル（`~/isaacsim/skills` へのリンク） |
 
 ## 環境
@@ -135,7 +151,7 @@ Isaac Sim（sim/o3dyn_bringup.py）                    ROS 2（src/o3dyn_navigat
 | `03_install_turtlebot3_sim.sh` | TurtleBot3 + Gazebo（Nav2 もこのとき入る） |
 | `04_update_nvidia_driver.sh` | NVIDIA ドライバ 595（要再起動） |
 | `05_install_isaac_sim.sh` | Isaac Sim 6.1.0 |
-| `06_setup_python_env.sh` | テストパネル・UI 用の Python 環境（`.venv`、PySide6）と Qt の表示に必要なライブラリ |
+| `06_setup_python_env.sh` | Python 環境（`.venv`: PySide6, grpcio ほか）、Qt の表示に必要なライブラリ、gRPC コード生成、mission_server の登録 |
 
 ワークスペースのビルド: `colcon build --symlink-install`
 

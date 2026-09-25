@@ -220,7 +220,7 @@ UIの機能は、セットアップ・運用・保守の3層で構成する。�
 
 ## 8. API定義（概要）
 
-gRPC APIは責務と権限の単位で5サービスに分け、パッケージは `locomotion.v1` とする。メッセージの詳細はprotoファイル（`locomotion/v1/locomotion.proto`）を正とし、本章は構成と方針のみを記す。
+gRPC APIは責務と権限の単位で5サービスに分け、パッケージは `locomotion.v1` とする。メッセージの詳細はprotoファイル（[proto/locomotion/v1/locomotion.proto](../proto/locomotion/v1/locomotion.proto)）を正とし、本章は構成と方針のみを記す。
 
 | サービス | 主なRPC | 主な利用者 |
 | --- | --- | --- |

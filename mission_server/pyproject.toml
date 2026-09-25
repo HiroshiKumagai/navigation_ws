@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mission_server"
+version = "0.1.0"
+description = "Locomotion mission server: gRPC API over Nav2 (see doc/locomotion_spec.md)"
+requires-python = ">=3.12"
+dependencies = ["grpcio", "protobuf"]
+
+[tool.setuptools.packages.find]
+# mission_server 本体と、scripts/gen_proto.sh が gen/ に生成する locomotion.v1
+where = [".", "gen"]
+include = ["mission_server*", "locomotion*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# ROS 2 の source で入る launch_testing のプラグインは pytest 9 と互換がないため読み込まない
+addopts = "-p no:launch_testing -p no:launch_ros"
