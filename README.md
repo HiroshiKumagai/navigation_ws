@@ -6,7 +6,7 @@ Nav2 を土台に、ミッションサーバと UI を載せて移動台車を�
 
 現在は、Isaac Sim 上の全方向移動台車（O3dyn）を Nav2 とゲームパッドで動かせる段階。
 異常（安全停止・機器異常・自己位置喪失）を再現するテストパネルがある。
-ミッションサーバは状態遷移の中核（`mission_server/`）まで実装済み。ROS 2・gRPC との接続と UI は未着手。
+ミッションサーバは状態遷移の中核と ROS 2 との接続まで実装済み（`mission_server/`）。gRPC と UI は未着手。
 
 ## ミッションサーバ
 
@@ -21,6 +21,10 @@ cd mission_server && ../.venv/bin/python -m pytest -q  # 単体テスト（仕�
 | `mission_server/mission_server/core/` | 状態遷移とタスク管理（ROS 2 にも gRPC にも依存しない） |
 | `mission_server/tests/test_transitions.py` | 遷移表の各行のテスト（テスト名の番号 = 表の行） |
 | `mission_server/tests/test_rules.py` | 受理・拒否、権限、冪等性、異常検知のテスト |
+| `mission_server/mission_server/ros_adapter.py` | ROS 2 との接続（Nav2・AMCL・安全系・指令切替ノード・map_server） |
+| `mission_server/mission_server/store.py` | 地図・地点・ロボット設定の保存（`data/`） |
+| `mission_server/tools/try_with_sim.py` | 中核 + ROS 2 接続をシミュレーションで試す（移動・一時停止・安全停止） |
+| `data/` | 地図・地点・ロボット設定（シミュレーション用の倉庫の地図と地点 home, A〜D） |
 
 ## クイックスタート
 

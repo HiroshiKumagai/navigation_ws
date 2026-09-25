@@ -1,0 +1,21 @@
+# 目標地点（仕様書 6 章）。姿勢は map フレーム、yaw_deg は度
+- point_id: home
+  name: ホーム
+  pose: {x: 0.0, y: 0.0, yaw_deg: 0.0}
+  kind: STANDBY
+- point_id: A
+  name: 作業地点 A
+  pose: {x: 4.0, y: 6.0, yaw_deg: 90.0}
+  kind: WORK
+- point_id: B
+  name: 作業地点 B
+  pose: {x: -5.0, y: 4.0, yaw_deg: 180.0}
+  kind: WORK
+- point_id: C
+  name: 作業地点 C
+  pose: {x: 5.0, y: -6.0, yaw_deg: 0.0}
+  kind: WORK
+- point_id: D
+  name: 作業地点 D
+  pose: {x: -4.0, y: -10.0, yaw_deg: -90.0}
+  kind: WORK

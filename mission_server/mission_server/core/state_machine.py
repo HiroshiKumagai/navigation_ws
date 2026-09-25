@@ -68,6 +68,7 @@ class LocomotionCore:
         self,
         *,
         initial_mode: Mode = Mode.OPERATOR,
+        active_map_id: str | None = None,
         point_exists: Callable[[str, str], bool] = lambda map_id, point_id: True,
         map_exists: Callable[[str], bool] = lambda map_id: True,
         on_effect: Callable[[Effect], None] = lambda effect: None,
@@ -85,7 +86,7 @@ class LocomotionCore:
 
         self.state = S.NOT_READY
         self.mode = initial_mode
-        self.active_map_id: str | None = None
+        self.active_map_id: str | None = active_map_id  # 起動直後は地図があっても初期位置の設定待ち
         self.localized = False
         self.nav_activity = NavActivity.NORMAL
         self.fault: Fault | None = None

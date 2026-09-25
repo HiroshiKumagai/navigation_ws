@@ -27,12 +27,12 @@ Sep 25, 2026 作成
 
 - [x] **1-1 proto の配置とコード生成**: `doc/locomotion.proto` を `proto/locomotion/v1/` へ移し、Python コードを生成する仕組みを作る（`grpcio-tools` を `.venv` に追加）
 - [x] **1-2 状態遷移の中核**: 仕様書 4 章の遷移表をデータとして持ち、受理・拒否（FAILED_PRECONDITION）の判定とタスクの結果（成功・中断・失敗）を決める。**遷移表の各行を単体テストにする**
-- [ ] **1-3 ROS 2 アダプタ**:
+- [x] **1-3 ROS 2 アダプタ**:
   - Nav2: `NavigateToPose` / `NavigateThroughPoses` の送信・キャンセル、フィードバック（リカバリ回数 → 回避動作中）
   - AMCL: 推定位置と共分散（自己位置の良否判定）、初期位置の設定
   - 安全系: `/safety/state` の購読、`/safety/reset` の送信
   - 指令切替ノード: モードの切り替え
-- [ ] **1-4 地点の保存（最小）**: 1 枚の地図の中の地点 ID と姿勢を保存する
+- [x] **1-4 地点の保存（最小）**: 1 枚の地図の中の地点 ID と姿勢を保存する
 - [ ] **1-5 gRPC サービス**: `RobotService`（GetStatus / WatchStatus / WatchPose / SetMode / SetInitialPose / ResetSafetyStop）と `TaskService`（StartTask / PauseTask / ResumeTask / StopTask / RetryTask / GetTask / ListTasks）。地点の登録は `PointService` の最小限（CreatePoint / ListPoints）
 - [ ] **1-6 確認用のコマンドラインクライアント**
 
