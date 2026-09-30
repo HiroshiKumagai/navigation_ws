@@ -142,6 +142,30 @@ class Store:
         with self._lock:
             return self._maps[map_id]
 
+    def map_geometry(self, map_id):
+        """(解像度 [m/pixel], 幅, 高さ, 原点 (x, y, yaw))。map_server 形式の YAML と画像から読む"""
+        info = self.get_map(map_id)
+        meta = self._read_yaml(info.yaml_path, {})
+        from PIL import Image
+
+        with Image.open(info.yaml_path.parent / meta["image"]) as image:
+            width, height = image.size
+        origin = meta.get("origin", [0.0, 0.0, 0.0])
+        return float(meta["resolution"]), width, height, (float(origin[0]), float(origin[1]), float(origin[2]))
+
+    def map_png(self, map_id) -> bytes:
+        """地図画像を PNG で返す（UI 表示用）"""
+        import io
+
+        from PIL import Image
+
+        info = self.get_map(map_id)
+        meta = self._read_yaml(info.yaml_path, {})
+        buffer = io.BytesIO()
+        with Image.open(info.yaml_path.parent / meta["image"]) as image:
+            image.convert("L").save(buffer, format="PNG")
+        return buffer.getvalue()
+
     # ---- 地点 ----
     def point_exists(self, map_id, point_id):
         with self._lock:

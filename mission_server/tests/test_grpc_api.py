@@ -248,3 +248,12 @@ def test_route_editing(api):
     api.points.DeleteRoute(pb.DeleteRouteRequest(map_id="warehouse", route_id="loop", expected_version=2), metadata=INTEGRATOR)
     ids = [r.route_id for r in api.points.ListRoutes(pb.ListRoutesRequest(map_id="warehouse"), metadata=OPERATOR).routes]
     assert "loop" not in ids
+
+
+def test_map_detail_and_image(api):
+    info = api.maps.GetMap(pb.GetMapRequest(map_id="warehouse"), metadata=OPERATOR)
+    assert info.resolution == pytest.approx(0.05) and info.width > 0 and info.height > 0
+    assert info.origin.x == pytest.approx(-11.975)
+    chunks = list(api.maps.DownloadMapImage(pb.DownloadMapImageRequest(map_id="warehouse"), metadata=OPERATOR))
+    data = b"".join(c.data for c in chunks)
+    assert chunks[0].total_bytes == len(data) and data[:8] == b"\x89PNG\r\n\x1a\n"

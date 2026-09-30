@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "locomotion_ui"
+version = "0.1.0"
+description = "Local operator UI (PySide6) for the locomotion mission server. gRPC client only."
+requires-python = ">=3.12"
+dependencies = ["PySide6", "grpcio", "grpcio-status"]
+
+[tool.setuptools.packages.find]
+include = ["locomotion_ui*"]

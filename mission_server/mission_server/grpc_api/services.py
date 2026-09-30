@@ -244,14 +244,21 @@ class TaskService(pb_grpc.TaskServiceServicer):
 
 
 class MapService(pb_grpc.MapServiceServicer):
-    """最小限: 地図の一覧・参照と使用する地図の切替（作成・編集はステップ 4）"""
+    """最小限: 地図の一覧・参照・画像と使用する地図の切替（作成はステップ 3、編集はステップ 5）"""
 
     def __init__(self, ctx: ServerContext):
         self.ctx = ctx
 
-    def _map_pb(self, map_id):
+    IMAGE_CHUNK_SIZE = 64 * 1024
+
+    def _map_pb(self, map_id, detail=False):
         info = self.ctx.store.get_map(map_id)
-        return pb.MapInfo(map_id=info.map_id, name=info.name, version=info.version)
+        msg = pb.MapInfo(map_id=info.map_id, name=info.name, version=info.version)
+        if detail:
+            resolution, width, height, origin = self.ctx.store.map_geometry(map_id)
+            msg.resolution, msg.width, msg.height = resolution, width, height
+            msg.origin.CopyFrom(pb.Pose2D(x=origin[0], y=origin[1], yaw=origin[2]))
+        return msg
 
     def ListMaps(self, request, context):
         role_of(context)
@@ -261,7 +268,19 @@ class MapService(pb_grpc.MapServiceServicer):
         role_of(context)
         if not self.ctx.store.map_exists(request.map_id):
             context.abort(grpc.StatusCode.NOT_FOUND, f"地図 {request.map_id} はありません")
-        return self._map_pb(request.map_id)
+        return self._map_pb(request.map_id, detail=True)
+
+    def DownloadMapImage(self, request, context):
+        """地図画像（PNG）を分割して送る。version は現状は最新のみ（版の管理はステップ 5）"""
+        role_of(context)
+        if not self.ctx.store.map_exists(request.map_id):
+            context.abort(grpc.StatusCode.NOT_FOUND, f"地図 {request.map_id} はありません")
+        data = self.ctx.store.map_png(request.map_id)
+        for offset in range(0, len(data), self.IMAGE_CHUNK_SIZE):
+            chunk = pb.MapImageChunk(data=data[offset : offset + self.IMAGE_CHUNK_SIZE])
+            if offset == 0:
+                chunk.total_bytes = len(data)
+            yield chunk
 
     def ActivateMap(self, request, context):
         call_core(context, self.ctx.core.activate_map, role_of(context), request.map_id)

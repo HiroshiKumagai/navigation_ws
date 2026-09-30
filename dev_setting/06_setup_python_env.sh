@@ -2,7 +2,7 @@
 # テストパネル・UI・ミッションサーバ用の Python 環境（.venv）を作る。
 #   - Qt（PySide6）の画面表示に必要な libxcb-cursor0 をインストール
 #   - ROS 2 のパッケージを使えるよう --system-site-packages で仮想環境を作り、requirements.txt を入れる
-#   - proto から gRPC のコードを生成し、mission_server を開発モードで入れる
+#   - proto から gRPC のコードを生成し、mission_server と運用画面（operator_ui）を開発モードで入れる
 set -euo pipefail
 
 WS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,5 +21,6 @@ fi
 
 "$WS_DIR/scripts/gen_proto.sh"
 "$WS_DIR/.venv/bin/python" -m pip install -e "$WS_DIR/mission_server"
+"$WS_DIR/.venv/bin/python" -m pip install -e "$WS_DIR/operator_ui"
 
 "$WS_DIR/.venv/bin/python" -c "import PySide6, rclpy, mission_server, locomotion.v1.locomotion_pb2; print('OK: PySide6', PySide6.__version__)"
