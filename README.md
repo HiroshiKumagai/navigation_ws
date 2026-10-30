@@ -179,7 +179,7 @@ Isaac Sim（sim/o3dyn_bringup.py）                    ROS 2（src/o3dyn_navigat
 | `proto/`, `mission_server/`, `scripts/gen_proto.sh` | API 定義とミッションサーバ（上記） |
 | `operator_ui/` | 運用画面（ローカル UI、パッケージ `locomotion_ui`） |
 | `stop_sim.sh` | 環境の一括終了 |
-| `.claude/skills/` | Claude Code 用の Isaac Sim スキル（`~/isaacsim/skills` へのリンク） |
+| `.claude/skills/` | Claude Code 用の Isaac Sim スキル（`~/isaacsim/skills` へのリンク。git 管理外で `dev_setting/06_setup_python_env.sh` が作る） |
 
 ## 環境
 

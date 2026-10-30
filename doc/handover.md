@@ -101,9 +101,9 @@ flowchart LR
 | `dev_setting/` | 環境構築スクリプト（番号順に実行） | `01`〜`06` |
 | `scripts/` | コード生成 | `gen_proto.sh` |
 | `start_sim.sh` / `stop_sim.sh` | 環境の一括起動・終了 | |
-| `.claude/skills/` | Claude Code 用の Isaac Sim スキル（`~/isaacsim/skills` へのリンク） | |
+| `.claude/skills/` | Claude Code 用の Isaac Sim スキル（`~/isaacsim/skills` へのリンク。git 管理外で、`06_setup_python_env.sh` が作る） | |
 
-Git に入っていないもの（再生成する）: `.venv/`、`mission_server/gen/`（proto の生成コード）、`build/` `install/` `log/`（colcon）、Isaac Sim 本体（`~/isaacsim`）。
+Git に入っていないもの（再生成する）: `.venv/`、`mission_server/gen/`（proto の生成コード）、`build/` `install/` `log/`（colcon）、`.claude/skills/`、Isaac Sim 本体（`~/isaacsim`）。
 
 ## 6. 環境構築（ゼロから）
 
@@ -193,4 +193,4 @@ cd mission_server && ../.venv/bin/python -m pytest -q && cd ..   # 149 passed（
 - [ ] ゲームパッド（Logicool F310）
 - [ ] 6 章の手順で環境を作り、テストと `./start_sim.sh --all` が動くこと
 - [ ] 仕様書の未決事項（10 章）と notes.md の未解決課題の担当
-- [ ] Claude Code で開発する場合: `.claude/skills/` は `~/isaacsim/skills` へのリンクなので、Isaac Sim を同じ場所に入れる。前任者の Claude Code のメモリ（会話の記憶）は引き継がれないため、判断の経緯はこの文書と仕様書を参照する
+- [ ] Claude Code で開発する場合: `.claude/skills/` は `06_setup_python_env.sh` が `~/isaacsim/skills`（または `$ISAACSIM_PATH/skills`）へのリンクとして作る。前任者の Claude Code のメモリ（会話の記憶）は引き継がれないため、判断の経緯はこの文書と仕様書を参照する

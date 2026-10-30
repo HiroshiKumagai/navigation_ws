@@ -9,3 +9,6 @@ __pycache__/
 .venv/
 mission_server/gen/
 *.egg-info/
+
+# Claude Code の Isaac Sim スキル（dev_setting/06_setup_python_env.sh が ~/isaacsim/skills へのリンクを作る）
+.claude/skills/

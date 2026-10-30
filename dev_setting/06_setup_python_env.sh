@@ -3,6 +3,7 @@
 #   - Qt（PySide6）の画面表示に必要な libxcb-cursor0 をインストール
 #   - ROS 2 のパッケージを使えるよう --system-site-packages で仮想環境を作り、requirements.txt を入れる
 #   - proto から gRPC のコードを生成し、mission_server と運用画面（operator_ui）を開発モードで入れる
+#   - Claude Code 用に、Isaac Sim 同梱のスキル（~/isaacsim/skills）のうち必要なものを .claude/skills にリンクする
 set -euo pipefail
 
 WS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,5 +23,19 @@ fi
 "$WS_DIR/scripts/gen_proto.sh"
 "$WS_DIR/.venv/bin/python" -m pip install -e "$WS_DIR/mission_server"
 "$WS_DIR/.venv/bin/python" -m pip install -e "$WS_DIR/operator_ui"
+
+# Claude Code 用の Isaac Sim スキル（ROS 2・Nav2・移動ロボット・センサに関係するもの）
+ISAACSIM_SKILLS="${ISAACSIM_PATH:-$HOME/isaacsim}/skills"
+if [[ -d "$ISAACSIM_SKILLS" ]]; then
+    mkdir -p "$WS_DIR/.claude/skills"
+    for skill in isaac-sim-orchestrator isaac-sim-workflow isaac-sim-troubleshooting isaac-sim-validator \
+        isaac-sim-ros2-bridge isaac-sim-ros-workspaces isaac-sim-robot-navigation occupancy-map navigation-primitives \
+        urdf-mjcf-to-usd-conversion usd-articulation physics-simulation isaac-sim-sensor isaac-sim-assets \
+        isaac-sim-headless-deployment; do
+        ln -sfn "$ISAACSIM_SKILLS/$skill" "$WS_DIR/.claude/skills/$skill"
+    done
+else
+    echo "Isaac Sim のスキルが見つかりません（$ISAACSIM_SKILLS）。Claude Code を使わないなら問題ありません"
+fi
 
 "$WS_DIR/.venv/bin/python" -c "import PySide6, rclpy, mission_server, locomotion.v1.locomotion_pb2; print('OK: PySide6', PySide6.__version__)"
