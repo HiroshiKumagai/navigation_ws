@@ -8,8 +8,9 @@ set -euo pipefail
 
 WS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo "=== Qt の表示に必要なライブラリ ==="
-sudo apt install -y libxcb-cursor0 python3.12-venv
+echo "=== Qt の表示に必要なライブラリと Python のパッケージ ==="
+# テストパネル・ツールが使う numpy / scipy / PIL / yaml はシステムのものを使う（.venv は --system-site-packages）
+sudo apt install -y libxcb-cursor0 python3.12-venv python3-numpy python3-scipy python3-pil python3-yaml
 
 echo "=== Python 仮想環境: $WS_DIR/.venv ==="
 if [[ ! -x "$WS_DIR/.venv/bin/python" ]]; then
