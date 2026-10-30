@@ -3,6 +3,7 @@
 Nav2 を土台に、ミッションサーバと UI を載せて移動台車を運用するソフトウェアの開発ワークスペース。
 仕様は [doc/locomotion_spec.md](doc/locomotion_spec.md)、API は [proto/locomotion/v1/locomotion.proto](proto/locomotion/v1/locomotion.proto) を正とする。
 開発の進め方は [doc/roadmap.md](doc/roadmap.md)。
+**開発を引き継ぐ人は [doc/handover.md](doc/handover.md) から読む。**
 
 現在は、Isaac Sim 上の全方向移動台車（O3dyn）を Nav2 とゲームパッドで動かせる段階。
 異常（安全停止・機器異常・自己位置喪失）を再現するテストパネルがある。
