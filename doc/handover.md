@@ -110,6 +110,7 @@ Git に入っていないもの（再生成する）: `.venv/`、`mission_server
 前提: NVIDIA RTX GPU（VRAM 16 GB 以上推奨。開発は RTX 3090 Ti）、メモリ 32 GB 以上、ディスク空き 100 GB 以上、sudo 権限、インターネット接続（Isaac Sim は約 13 GB）。
 
 ```bash
+git clone https://github.com/HiroshiKumagai/navigation_ws.git ~/future_ws/navigation_ws
 cd ~/future_ws/navigation_ws
 ./dev_setting/01_upgrade_to_noble.sh      # Ubuntu 22.04 の場合のみ。24.04 なら不要
 ./dev_setting/01b_post_upgrade_fix.sh     # 同上
@@ -187,7 +188,7 @@ cd mission_server && ../.venv/bin/python -m pytest -q && cd ..   # 149 passed（
 
 ## 10. 引き継ぎで確認すること
 
-- [ ] リポジトリへのアクセス（現在はこの PC のローカルのみ。共有先を決めて push する）
+- [x] リポジトリの公開: https://github.com/HiroshiKumagai/navigation_ws（Public、ブランチ master。ライセンスファイルなし）
 - [ ] 開発 PC の要件を満たす環境（GPU・ドライバ 595 以上）と sudo 権限
 - [ ] Isaac Sim 6.1.0 のダウンロード（約 13 GB）と利用条件の確認
 - [ ] ゲームパッド（Logicool F310）
